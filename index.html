@@ -439,6 +439,10 @@ body.theme-vo {
 }
 body.theme-vo .kpibar{background:var(--kpi-bg)}
 body.theme-vo .sidebar{background:linear-gradient(180deg,#431407,#3a1206)}
+body.theme-vo .sbb{color:#fff !important}
+body.theme-vo .sb-lbl{color:rgba(255,255,255,.5) !important}
+body.theme-vo .vb{background:rgba(255,255,255,.15);color:rgba(255,255,255,.8)}
+body.theme-vo .sbb.act .vb{background:rgba(255,255,255,.3);color:#fff}
 body.theme-vo .sbb:hover{background:rgba(245,158,11,.15);border-left-color:#f59e0b}
 body.theme-vo .sec-h{background:linear-gradient(135deg,#7c2d12,#92400e)}
 body.theme-vo .sec-h.n1{background:linear-gradient(135deg,#431407,#7c2d12)}
@@ -1453,7 +1457,7 @@ async function saveCfg(){
   // Sync Supabase arrière-plan
   let dbOk=true;
   for(let i=0;i<newNames.length;i++){
-    const res=await db.from('vendeurs_config').upsert({slot:i+1,nom:newNames[i]},{onConflict:'slot'});
+    const res=await db.from('vendeurs_config').upsert({slot:i+1,nom:newNames[i],equipe:currentEquipe},{onConflict:'slot,equipe'});
     if(res.error){console.warn('vendeurs_config:',res.error.message);dbOk=false;}
   }
   if(!dbOk) toast('Noms sauvegardés localement. Lancez le SQL pour la persistance.');
