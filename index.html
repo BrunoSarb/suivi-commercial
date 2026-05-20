@@ -944,13 +944,15 @@ function rCfg(){
   // ── ÉTAPE 1 : Grille de saisie des noms ──
   // On affiche TOUJOURS les 9 postes avec les noms actuels (VS = noms de l'équipe affichée)
   // Le directeur peut modifier les noms et enregistrer → saveCfg()
+  // Toujours 9 postes, compléter avec vide si VS a moins
   let cards='';
-  VS.forEach((v,i)=>{
+  for(let i=0;i<9;i++){
     const slot=i+1;
-    const initiales=ini(v);
+    const v=VS[i]||'';
+    const initiales=v?ini(v):'?';
     cards+=`<div class="cfg-card" style="position:relative">
       <div class="cfg-card-top">
-        <div class="cfg-av" style="background:var(--navy2);font-size:11px">${initiales}</div>
+        <div class="cfg-av" id="av-slot-${slot}" style="background:${v?'var(--navy2)':'var(--text3)'};font-size:11px">${initiales}</div>
         <div>
           <div class="cfg-nm" style="font-size:12px;color:var(--text3);font-weight:400">Poste ${slot}</div>
         </div>
@@ -960,18 +962,18 @@ function rCfg(){
           <div class="cfg-l">Nom complet du vendeur</div>
           <input type="text" class="cfg-i name-i" id="vn-${slot}" value="${v}" placeholder="Ex : Martin J."
             oninput="previewVendeur(${slot})"
-            style="font-size:14px;padding:8px 10px">
+            style="font-size:14px;padding:8px 10px${v?'':';border-color:#f97316;background:#fff7ed'}">
         </div>
       </div>
     </div>`;
-  });
+  }
 
   // ── ÉTAPE 2 : Tableau de qualification des services ──
   // On lit directement VS (noms déjà enregistrés) et vendeurs_config pour savoir l'équipe actuelle
   // On construit les lignes à partir de VS (source unique de vérité)
   let qualifRows='';
   VS.forEach(function(nom,i){
-    if(!nom||nom.startsWith('Vendeur '))return; // skip postes génériques non encore nommés
+    if(!nom)return; // skip postes vides seulement
     var slot=i+1;
     var vk=nom.replace(/[^a-zA-Z0-9]/g,'_');
     // On va lire l'équipe depuis vendeurs_config via la fonction async,
@@ -1011,7 +1013,7 @@ function rCfg(){
     </tr>`;
   });
 
-  var hasNamed=VS.some(v=>v&&!v.startsWith('Vendeur '));
+  var hasNamed=VS.length>0; // Afficher la qualification dès qu'il y a des vendeurs
 
   return`
   <!-- ══ ÉTAPE 1 : Création / nommage des postes ══ -->
@@ -1029,9 +1031,15 @@ function rCfg(){
       💡 Saisissez le nom complet de chaque vendeur (ex : <strong>Martin J.</strong>) puis cliquez sur <strong>Enregistrer</strong>. Les postes non remplis garderont leur nom actuel.
     </div>
     <div class="cfg-grid">${cards}</div>
-    <button class="btn-sv purple" onclick="saveCfg()" style="background:var(--navy2)">
-      ✓ Enregistrer les ${VS.length} vendeurs
+    <button class="btn-sv purple" onclick="saveCfg()" style="background:var(--navy2);margin-bottom:0">
+      ✓ Enregistrer les 9 vendeurs en ${currentEquipe}
     </button>
+    <div style="padding:10px 16px 14px;display:flex;gap:8px;align-items:center">
+      <button onclick="diagSupabase()" style="padding:6px 14px;background:transparent;border:1px solid var(--border2);border-radius:6px;font-size:11px;color:var(--text3);cursor:pointer;font-family:DM Sans,sans-serif">
+        🔍 Voir l'état Supabase
+      </button>
+      <span id="diag-result" style="font-size:11px;color:var(--text3)"></span>
+    </div>
   </div>
 
   <!-- ══ ÉTAPE 2 : Qualification des services ══ -->
@@ -1132,6 +1140,37 @@ async function setQualif(nom,service){
     await loadVendeurNames();
     await loadData();
   }catch(e){toast('Erreur setQualif: '+e.message);console.error(e);}
+}
+
+// Diagnostic Supabase — affiche le contenu de vendeurs_config
+async function diagSupabase(){
+  var el=document.getElementById('diag-result');
+  if(el)el.textContent='Chargement...';
+  try{
+    var{data,error}=await db.from('vendeurs_config').select('*').order('equipe').order('slot',{ascending:true});
+    if(error){if(el)el.textContent='Erreur: '+error.message;return;}
+    if(!data||data.length===0){if(el)el.textContent='⚠️ Table vendeurs_config vide !';return;}
+
+    // Afficher dans un toast étendu
+    var vn=data.filter(r=>r.equipe==='VN').map(r=>'['+r.slot+'] '+r.nom).join(', ');
+    var vo=data.filter(r=>r.equipe==='VO').map(r=>'['+r.slot+'] '+r.nom).join(', ');
+    var msg='VN('+data.filter(r=>r.equipe==='VN').length+'): '+vn+' | VO('+data.filter(r=>r.equipe==='VO').length+'): '+vo;
+    if(el)el.textContent=msg;
+    console.log('vendeurs_config complet:',data);
+
+    // Afficher aussi dans la page
+    var diagDiv=document.getElementById('diag-full');
+    if(!diagDiv){
+      diagDiv=document.createElement('div');
+      diagDiv.id='diag-full';
+      diagDiv.style.cssText='margin:0 16px 16px;padding:12px 14px;background:#f8f9ff;border-radius:8px;border:1px solid var(--border2);font-size:12px';
+      var btn=document.querySelector('[onclick="diagSupabase()"]');
+      if(btn&&btn.parentNode)btn.parentNode.appendChild(diagDiv);
+    }
+    var rows=data.map(r=>'<tr><td style="padding:3px 10px">'+r.slot+'</td><td style="padding:3px 10px;font-weight:600">'+r.nom+'</td><td style="padding:3px 10px"><span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:'+(r.equipe==='VN'?'#eff6ff;color:#1d4ed8':r.equipe==='VO'?'#fff7ed;color:#b45309':'#f5f3ff;color:#6d28d9')+'">'+r.equipe+'</span></td></tr>').join('');
+    diagDiv.innerHTML='<div style="font-weight:600;margin-bottom:8px;color:var(--navy2)">📋 Contenu de vendeurs_config ('+data.length+' lignes)</div>'
+      +'<table style="font-size:11px;border-collapse:collapse"><thead><tr><th style="padding:3px 10px;text-align:left;color:var(--text3)">Slot</th><th style="padding:3px 10px;text-align:left;color:var(--text3)">Nom</th><th style="padding:3px 10px;text-align:left;color:var(--text3)">Équipe</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }catch(e){if(el)el.textContent='Erreur: '+e.message;}
 }
 
 // Aperçu live des initiales quand on tape
@@ -1242,21 +1281,20 @@ async function saveObj(){
   }
 }
 
-// ══ CORRECTION BUG 2 : saveCfg sauvegarde avec equipe pour séparer VN et VO ══
 async function saveCfg(){
   if(role!=='directeur'){toast('Réservé au directeur');return}
   const newNames=[];
-  for(let i=0;i<VS.length;i++){
+  for(let i=0;i<9;i++){
     const el=document.getElementById('vn-'+(i+1));
     const nm=el?el.value.trim():'';
-    newNames.push(nm||VS[i]);
+    newNames.push(nm||(VS[i]||'Vendeur '+(i+1)));
   }
   const oldVS=[...VS];
   VS=newNames;
   const newS={};const newOBJ={};
   oldVS.forEach((old,i)=>{
     const nv=newNames[i];
-    newS[nv]=S[old]||{contacts:[],affaires:[],memo:[],counter:0};
+    newS[nv]=S[old]||{contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};
     if(newS[nv].contacts)newS[nv].contacts.forEach(c=>{c.vendeur=nv});
     if(newS[nv].affaires)newS[nv].affaires.forEach(a=>{a.vendeur=nv});
     if(newS[nv].memo)newS[nv].memo.forEach(m=>{m.vendeur=nv});
@@ -1264,16 +1302,24 @@ async function saveCfg(){
   });
   S=newS;OBJ=newOBJ;
   pg='__cfg__';
-  renderAll();toast('Vendeurs enregistrés ✓ — qualifiez maintenant les services ci-dessous');
-  for(let i=0;i<newNames.length;i++){
-    try{
-      var ex=await db.from('vendeurs_config').select('id').eq('slot',i+1).eq('equipe',currentEquipe).limit(1);
-      if(ex.data&&ex.data.length>0){
-        await db.from('vendeurs_config').update({nom:newNames[i]}).eq('slot',i+1).eq('equipe',currentEquipe);
-      } else {
-        await db.from('vendeurs_config').insert({slot:i+1,nom:newNames[i],equipe:currentEquipe});
-      }
-    }catch(e){console.warn('vendeurs_config save:',e.message);}
+  renderAll();
+
+  // Stratégie : DELETE les slots de cette equipe puis INSERT propre
+  try{
+    // Supprimer toutes les lignes de cette équipe pour ces 9 slots
+    await db.from('vendeurs_config').delete().eq('equipe',currentEquipe).gte('slot',1).lte('slot',9);
+    // Réinsérer les 9 vendeurs
+    const rows=newNames.map((nom,i)=>({slot:i+1,nom:nom,equipe:currentEquipe}));
+    const ins=await db.from('vendeurs_config').insert(rows);
+    if(ins.error){
+      toast('⚠️ Erreur Supabase: '+ins.error.message);
+      console.error('saveCfg insert:',ins.error);
+    } else {
+      toast('✓ '+newNames.length+' vendeurs enregistrés en '+currentEquipe+' — qualifiez les services ci-dessous');
+    }
+  }catch(e){
+    toast('Erreur: '+e.message);
+    console.error('saveCfg:',e);
   }
   setTimeout(loadQualifBadges,300);
 }
