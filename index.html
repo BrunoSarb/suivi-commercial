@@ -554,15 +554,21 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
         <div class="kpi-sub" id="t-pc">0% obj.</div>
       </div>
       <div class="kpi kpi-accent">
-        <div class="kpi-lbl">Financements</div>
+        <div class="kpi-lbl" id="t-fi-lbl">Financements</div>
         <div class="kv" id="t-fi">0</div>
         <div class="kpi-sub" id="t-pfi">0%</div>
+        <div id="t-loa-row" style="display:none;margin-top:2px">
+          <div style="font-size:9px;color:rgba(255,255,255,.6)">dont LOA</div>
+          <div style="font-size:12px;font-weight:600;color:#fde68a;font-family:'DM Mono',monospace" id="t-loa">0 — 0%</div>
+        </div>
       </div>
       <div class="kdiv"></div>
+      <div class="kpi"><div class="kpi-lbl">Pack Liv</div><div class="kv sm" id="t-pl">0</div><div class="kpi-sub" id="t-ppl">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Gravages</div><div class="kv sm" id="t-gr">0</div><div class="kpi-sub" id="t-pgr">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Coyote</div><div class="kv sm purple" id="t-co">0</div><div class="kpi-sub" id="t-pco">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Waxoyl</div><div class="kv sm" id="t-wa">0</div><div class="kpi-sub" id="t-pwa">0%</div></div>
-      <div class="kpi"><div class="kpi-lbl">A.Lease</div><div class="kv sm" id="t-al">0</div><div class="kpi-sub" id="t-pal">0%</div></div>
+      <div class="kpi"><div class="kpi-lbl">C.Ent</div><div class="kv sm" id="t-ce">0</div><div class="kpi-sub" id="t-pce">0%</div></div>
+      <div class="kpi" id="t-al-kpi"><div class="kpi-lbl">A.Lease</div><div class="kv sm" id="t-al">0</div><div class="kpi-sub" id="t-pal">0%</div></div>
       <div class="kdiv"></div>
       <div class="kpi" style="border-left:2px solid #7c3aed;padding-left:12px;margin-left:2px">
         <div class="kpi-lbl" style="color:#ddd6fe">Cde Stock</div>
@@ -595,15 +601,21 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
         <div class="kpi-sub" id="v-pc">0% obj.</div>
       </div>
       <div class="kpi kpi-accent">
-        <div class="kpi-lbl">Financements</div>
+        <div class="kpi-lbl" id="v-fi-lbl">Financements</div>
         <div class="kv sm" id="v-fi">0</div>
         <div class="kpi-sub" id="v-pfi">0%</div>
+        <div id="v-loa-row" style="display:none;margin-top:2px">
+          <div style="font-size:9px;color:rgba(255,255,255,.6)">dont LOA</div>
+          <div style="font-size:12px;font-weight:600;color:#fde68a;font-family:'DM Mono',monospace" id="v-loa">0 — 0%</div>
+        </div>
       </div>
       <div class="kdiv"></div>
+      <div class="kpi"><div class="kpi-lbl">Pack Liv</div><div class="kv sm sm" id="v-pl">0</div><div class="kpi-sub" id="v-ppl">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Gravages</div><div class="kv sm sm" id="v-gr">0</div><div class="kpi-sub" id="v-pgr">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Coyote</div><div class="kv sm sm purple" id="v-co">0</div><div class="kpi-sub" id="v-pco">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Waxoyl</div><div class="kv sm sm" id="v-wa">0</div><div class="kpi-sub" id="v-pwa">0%</div></div>
-      <div class="kpi"><div class="kpi-lbl">A.Lease</div><div class="kv sm sm" id="v-al">0</div><div class="kpi-sub" id="v-pal">0%</div></div>
+      <div class="kpi"><div class="kpi-lbl">C.Ent</div><div class="kv sm sm" id="v-ce">0</div><div class="kpi-sub" id="v-pce">0%</div></div>
+      <div class="kpi" id="v-al-kpi"><div class="kpi-lbl">A.Lease</div><div class="kv sm sm" id="v-al">0</div><div class="kpi-sub" id="v-pal">0%</div></div>
       <div class="kdiv"></div>
       <div class="kpi" style="border-left:2px solid #7c3aed;padding-left:12px;margin-left:2px">
         <div class="kpi-lbl" style="color:#ddd6fe">Cde Stock</div>
@@ -653,7 +665,12 @@ const SB_KEY='sb_publishable_TL_CKPJrEzfaFOeu-lY4iw_MckDRplv';
 const{createClient}=supabase;
 const db=createClient(SB_URL,SB_KEY);
 
-const OPTS=['Cde Stock','Financement','Gravage','Coyote','Waxoyl','A.Lease'];
+// Options par équipe
+const OPTS_VN=['Cde Stock','Pack Liv','Financement','Gravage','Coyote','Waxoyl','C.Ent','A.Lease'];
+const OPTS_VO=['Cde Stock','Pack Liv','Fi Classic','LOA','Gravage','Coyote','Waxoyl','C.Ent'];
+// OPTS = liste courante selon équipe (pour compatibilité)
+var OPTS=currentEquipe==='VO'?OPTS_VO:OPTS_VN;
+function getOpts(){return currentEquipe==='VO'?OPTS_VO:OPTS_VN;}
 let leadsData={};
 let currentEquipe='VN';
 let bilanDB={};
@@ -722,6 +739,7 @@ async function startApp(){
   else{document.body.classList.remove('theme-vo');}
   var eqSwitch=document.querySelector('.equipe-switch');
   if(eqSwitch){eqSwitch.style.display=(role==='vendeur')?'none':'flex';}
+  OPTS=currentEquipe==='VO'?OPTS_VO:OPTS_VN; // init options selon équipe
   await loadVendeurNames();
   resetState();
   if(role==='vendeur'&&userVendeurNom){pg=userVendeurNom;}
@@ -826,7 +844,7 @@ async function loadData(){
 }
 
 function tKPI(){
-  let ct=0,ac=0,ob=0,re=0,cs=0,fi=0,gr=0,co=0,wa=0,al=0;
+  let ct=0,ac=0,ob=0,re=0,cs=0,fi=0,loa=0,gr=0,co=0,wa=0,al=0,pl=0,ce=0;
   VS.forEach(v=>{
     if(!S[v])return;
     ct+=S[v].counter;
@@ -836,18 +854,38 @@ function tKPI(){
     // (un vendeur VN+VO peut avoir des mémos dans les deux équipes)
     const memoEq=S[v].memo.filter(m=>!m.equipe||m.equipe===currentEquipe);
     re+=memoEq.length;
-    memoEq.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
+    memoEq.forEach(m=>{const o=m.opts||[];
+      if(o.includes('Cde Stock'))cs++;
+      if(o.includes('Financement')||o.includes('Fi Classic'))fi++;
+      if(o.includes('LOA')){fi++;loa++;}
+      if(o.includes('Gravage'))gr++;
+      if(o.includes('Coyote'))co++;
+      if(o.includes('Waxoyl'))wa++;
+      if(o.includes('A.Lease'))al++;
+      if(o.includes('Pack Liv'))pl++;
+      if(o.includes('C.Ent'))ce++;
+    });
   });
-  return{ct,ac,ob,re,cs,fi,gr,co,wa,al};
+  return{ct,ac,ob,re,cs,fi,loa,gr,co,wa,al,pl,ce};
 }
 function vKPI(v){
   const s=S[v]||{contacts:[],affaires:[],memo:[],counter:0};
-  let cs=0,fi=0,gr=0,co=0,wa=0,al=0;
+  let cs=0,fi=0,loa=0,gr=0,co=0,wa=0,al=0,pl=0,ce=0;
   // Filtrer les mémos par currentEquipe — un vendeur VN+VO a des mémos des deux côtés
   // Sur la page VN on n'affiche que ses réalisations VN, sur VO que ses réalisations VO
   const memoEq=s.memo.filter(m=>!m.equipe||m.equipe===currentEquipe);
-  memoEq.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
-  return{ct:s.counter,ac:s.affaires.length,ob:OBJ[v]?.objectif_commandes??0,re:memoEq.length,cs,fi,gr,co,wa,al};
+  memoEq.forEach(m=>{const o=m.opts||[];
+    if(o.includes('Cde Stock'))cs++;
+    if(o.includes('Financement')||o.includes('Fi Classic'))fi++;
+    if(o.includes('LOA')){fi++;loa++;}
+    if(o.includes('Gravage'))gr++;
+    if(o.includes('Coyote'))co++;
+    if(o.includes('Waxoyl'))wa++;
+    if(o.includes('A.Lease'))al++;
+    if(o.includes('Pack Liv'))pl++;
+    if(o.includes('C.Ent'))ce++;
+  });
+  return{ct:s.counter,ac:s.affaires.length,ob:OBJ[v]?.objectif_commandes??0,re:memoEq.length,cs,fi,loa,gr,co,wa,al,pl,ce};
 }
 function pct(a,b){return b>0?Math.round(a/b*100):0}
 
@@ -882,9 +920,23 @@ function updKPIs(){
   sl('t-lo',lo);sl('t-ct',k.ct);sl('t-ac',k.ac);sl('t-ob',k.ob);sl('t-re',k.re);
   var p=k.ob>0?Math.min(100,Math.round(k.re/k.ob*100)):0;
   document.getElementById('t-pg').style.width=p+'%';
-  sl('t-pc',p+'% obj.');sl('t-fi',k.fi);sl('t-pfi',pct(k.fi,k.re)+'%');
-  sl('t-gr',k.gr);sl('t-pgr',pct(k.gr,k.re)+'%');sl('t-co',k.co);sl('t-pco',pct(k.co,k.re)+'%');
-  sl('t-wa',k.wa);sl('t-pwa',pct(k.wa,k.re)+'%');sl('t-al',k.al);sl('t-pal',pct(k.al,k.re)+'%');
+  sl('t-pc',p+'% obj.');
+  // Financement : label et affichage selon équipe
+  var isVO=currentEquipe==='VO';
+  var tFiLbl=document.getElementById('t-fi-lbl');
+  var tLoaRow=document.getElementById('t-loa-row');
+  var tAlKpi=document.getElementById('t-al-kpi');
+  if(tFiLbl)tFiLbl.textContent=isVO?'Fi Classic + LOA':'Financements';
+  if(tLoaRow)tLoaRow.style.display=isVO?'block':'none';
+  if(tAlKpi)tAlKpi.style.display=isVO?'none':'';
+  sl('t-fi',k.fi);sl('t-pfi',pct(k.fi,k.re)+'%');
+  sl('t-loa',k.loa+' — '+pct(k.loa,k.fi)+'%');
+  sl('t-pl',k.pl);sl('t-ppl',pct(k.pl,k.re)+'%');
+  sl('t-gr',k.gr);sl('t-pgr',pct(k.gr,k.re)+'%');
+  sl('t-co',k.co);sl('t-pco',pct(k.co,k.re)+'%');
+  sl('t-wa',k.wa);sl('t-pwa',pct(k.wa,k.re)+'%');
+  sl('t-ce',k.ce);sl('t-pce',pct(k.ce,k.re)+'%');
+  sl('t-al',k.al);sl('t-pal',pct(k.al,k.re)+'%');
   sl('t-cs',k.cs);sl('t-pcs',pct(k.cs,k.re)+'%');sl('t-tl',tl+'%');sl('t-tx',pct(k.re,k.ct)+'%');
   var isV=VS.includes(pg);
   document.getElementById('kb-vend').classList.toggle('on',isV);
@@ -897,8 +949,18 @@ function updKPIs(){
     sl('v-ob',kv.ob);sl('v-re',kv.re);
     var vp=kv.ob>0?Math.min(100,Math.round(kv.re/kv.ob*100)):0;
     document.getElementById('v-pg').style.width=vp+'%';sl('v-pc',vp+'% obj.');
-    sl('v-fi',kv.fi);sl('v-pfi',pct(kv.fi,kv.re)+'%');sl('v-gr',kv.gr);sl('v-pgr',pct(kv.gr,kv.re)+'%');
+    var vFiLbl=document.getElementById('v-fi-lbl');
+    var vLoaRow=document.getElementById('v-loa-row');
+    var vAlKpi=document.getElementById('v-al-kpi');
+    if(vFiLbl)vFiLbl.textContent=isVO?'Fi Classic + LOA':'Financements';
+    if(vLoaRow)vLoaRow.style.display=isVO?'block':'none';
+    if(vAlKpi)vAlKpi.style.display=isVO?'none':'';
+    sl('v-fi',kv.fi);sl('v-pfi',pct(kv.fi,kv.re)+'%');
+    sl('v-loa',kv.loa+' — '+pct(kv.loa,kv.fi)+'%');
+    sl('v-pl',kv.pl);sl('v-ppl',pct(kv.pl,kv.re)+'%');
+    sl('v-gr',kv.gr);sl('v-pgr',pct(kv.gr,kv.re)+'%');
     sl('v-co',kv.co);sl('v-pco',pct(kv.co,kv.re)+'%');sl('v-wa',kv.wa);sl('v-pwa',pct(kv.wa,kv.re)+'%');
+    sl('v-ce',kv.ce);sl('v-pce',pct(kv.ce,kv.re)+'%');
     sl('v-al',kv.al);sl('v-pal',pct(kv.al,kv.re)+'%');sl('v-cs',kv.cs);sl('v-pcs',pct(kv.cs,kv.re)+'%');
     sl('v-tl',vtl+'%');sl('v-tx',pct(kv.re,kv.ct)+'%');
   }
@@ -966,7 +1028,7 @@ function rVend(v){
   let ar=sa.length?'':` <tr class="empty-r"><td colspan="5">Aucune affaire chaude en cours</td></tr>`;
   sa.forEach(a=>{
     const op=a.opts||[];
-    const ob=OPTS.map(o=>`<span class="op${o==='Cde Stock'?' stock':''}${op.includes(o)?' on':''}" onclick="togOpt('${v}','${a.id}','${o}')">${o}</span>`).join('');
+    const ob=getOpts().map(o=>`<span class="op${o==='Cde Stock'?' stock':''}${op.includes(o)?' on':''}" onclick="togOpt('${v}','${a.id}','${o}')">${o}</span>`).join('');
     ar+=`<tr>
       <td><span class="cd">${fmt(a.date)}</span></td>
       <td><span class="cc">${a.client}</span></td>
@@ -1054,16 +1116,30 @@ function rVend(v){
 
 function rMemo(){
   let cs=0,fi=0,gr=0,co=0,wa=0,al=0;
-  GM.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
+  var loa_total=0,pl_total=0,ce_total=0;
+  GM.forEach(m=>{const o=m.opts||[];
+    if(o.includes('Cde Stock'))cs++;
+    if(o.includes('Financement')||o.includes('Fi Classic'))fi++;
+    if(o.includes('LOA')){fi++;loa_total++;}
+    if(o.includes('Gravage'))gr++;
+    if(o.includes('Coyote'))co++;
+    if(o.includes('Waxoyl'))wa++;
+    if(o.includes('A.Lease'))al++;
+    if(o.includes('Pack Liv'))pl_total++;
+    if(o.includes('C.Ent'))ce_total++;
+  });
   let html=`<div class="sec"><div class="sec-h mm"><div class="sec-title"><div class="sic">🏆</div>Mémo — Vue par vendeur</div></div>
   <div class="mk-row" style="grid-template-columns:repeat(8,1fr);border-bottom:1px solid var(--border)">
     <div class="mk"><div class="mk-v">${GM.length}</div><div class="mk-l">Total cdes</div></div>
     <div class="mk"><div class="mk-v" style="color:#7c3aed">${cs}</div><div class="mk-l">Cde Stock</div></div>
-    <div class="mk"><div class="mk-v">${fi}</div><div class="mk-l">Financements</div></div>
+    <div class="mk"><div class="mk-v">${pl_total}</div><div class="mk-l">Pack Liv</div></div>
+    <div class="mk"><div class="mk-v">${fi}</div><div class="mk-l">${currentEquipe==='VO'?'Fi+LOA':'Fin.'}</div></div>
+    ${currentEquipe==='VO'?`<div class="mk"><div class="mk-v" style="color:#f59e0b">${loa_total}</div><div class="mk-l">dont LOA</div></div>`:''}
     <div class="mk"><div class="mk-v">${gr}</div><div class="mk-l">Gravages</div></div>
     <div class="mk"><div class="mk-v">${co}</div><div class="mk-l">Coyote</div></div>
     <div class="mk"><div class="mk-v">${wa}</div><div class="mk-l">Waxoyl</div></div>
-    <div class="mk"><div class="mk-v">${al}</div><div class="mk-l">A.Lease</div></div>
+    <div class="mk"><div class="mk-v">${ce_total}</div><div class="mk-l">C.Ent</div></div>
+    ${currentEquipe==='VN'?`<div class="mk"><div class="mk-v">${al}</div><div class="mk-l">A.Lease</div></div>`:''}
     <div class="mk"><div class="mk-v">${GM.length>0?Math.round(fi/GM.length*100):0}%</div><div class="mk-l">Taux fin.</div></div>
   </div>`;
   VS.forEach(v=>{
@@ -1790,6 +1866,7 @@ async function confirmG(){
 
 async function switchEquipe(eq){
   if(eq===currentEquipe)return;
+  OPTS=eq==='VO'?OPTS_VO:OPTS_VN; // mettre à jour la liste d'options
   if(role==='vendeur'){toast('Accès réservé au chef ou directeur');return;}
   currentEquipe=eq;
   if(eq==='VO'){document.body.classList.add('theme-vo');}else{document.body.classList.remove('theme-vo');}
