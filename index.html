@@ -428,6 +428,31 @@ tr:hover td{background:#fafbff}
 .eq-btn.active-vo{background:#b45309;color:#fff;border-color:#f59e0b;box-shadow:0 0 12px rgba(245,158,11,.5)}
 .eq-btn:hover{opacity:.85}
 .eq-label{font-size:9px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;margin-right:4px}
+
+/* ══ THÈME VO (orange brûlé / ambre) ══ */
+body.theme-vo {
+  --navy:  #431407;
+  --navy2: #9a3412;
+  --navy3: #7c2d12;
+  --gold:  #f59e0b;
+  --kpi-bg: linear-gradient(135deg, #431407 0%, #7c2d12 60%, #92400e 100%);
+}
+body.theme-vo .kpibar{background:var(--kpi-bg)}
+body.theme-vo .sidebar{background:linear-gradient(180deg,#431407,#3a1206)}
+body.theme-vo .sbb.act,
+body.theme-vo .sbb:hover{background:rgba(245,158,11,.15);border-left-color:#f59e0b}
+body.theme-vo .sbb.act{color:#fde68a}
+body.theme-vo .sec-h{background:linear-gradient(135deg,#7c2d12,#92400e)}
+body.theme-vo .sec-h.n1{background:linear-gradient(135deg,#431407,#7c2d12)}
+body.theme-vo .sec-h.n2{background:linear-gradient(135deg,#7c2d12,#b45309)}
+body.theme-vo .sec-h.mm{background:linear-gradient(135deg,#92400e,#b45309)}
+body.theme-vo .sec-h.rk{background:linear-gradient(135deg,#431407,#92400e)}
+body.theme-vo .login-dot{background:linear-gradient(135deg,#b45309,#f59e0b)}
+body.theme-vo .kprog-f{background:#f59e0b}
+body.theme-vo .kpi.kpi-accent{background:rgba(255,255,255,.13)}
+body.theme-vo #btn-vn{background:transparent;color:rgba(255,255,255,.4);border-color:rgba(255,255,255,.2)}
+body.theme-vo #btn-vo{background:#b45309;color:#fff;border-color:#f59e0b;box-shadow:0 0 12px rgba(245,158,11,.5)}
+body.theme-vo .eq-badge{background:#b45309;color:#fff}
 </style>
 </head>
 <body>
@@ -671,6 +696,12 @@ async function doLogin(){
     if(!error && data && data.length>0){
       const u=data[0];
       role=u.role; userLogin=u.login; userVendeurNom=u.vendeur_nom||null;
+      // Initialiser l'équipe selon le rôle
+      if(role==='vendeur' && u.equipe){
+        currentEquipe = u.equipe;
+      } else {
+        currentEquipe = 'VN'; // Chef/directeur commencent en VN
+      }
       loggedIn=true;
     } else if(error){
       console.warn('Table utilisateurs inaccessible, passage en mode intégré.',error.message);
@@ -697,6 +728,17 @@ async function doLogin(){
 }
 
 async function startApp(){
+  // Appliquer thème VO si nécessaire
+  if(currentEquipe==='VO'){
+    document.body.classList.add('theme-vo');
+  } else {
+    document.body.classList.remove('theme-vo');
+  }
+  // Masquer bouton switch pour les vendeurs
+  var eqSwitch = document.querySelector('.equipe-switch');
+  if(eqSwitch){
+    eqSwitch.style.display = (role==='vendeur') ? 'none' : 'flex';
+  }
   // Load vendeur names from config
   await loadVendeurNames();
   resetState();
@@ -717,6 +759,8 @@ async function startApp(){
 }
 
 function doLogout(){
+  document.body.classList.remove('theme-vo');
+  currentEquipe = 'VN';
   role=null;userLogin=null;userVendeurNom=null;pg=null;
   $('login-wrap').classList.remove('hidden');
   $('app').style.display='none';
@@ -1141,21 +1185,93 @@ function rRAZ(){
 
 // ── NOM VENDEURS CONFIG (directeur only) ──
 function rCfg(){
-  if(role!=='directeur')return locked('Accès réservé au Directeur');
+  if(!canAdmin())return locked('Réservé au Chef de groupe ou Directeur');
+  var eq=currentEquipe;
+  var eqColor=eq==='VO'?'#92400e':'var(--navy2)';
+  var eqLabel=eq==='VO'?'🟠 Équipe VO':'🔵 Équipe VN';
   let cards='';
   VS.forEach((v,i)=>{
     const slot=i+1;
     cards+=`<div class="cfg-card">
-      <div class="cfg-card-top"><div class="cfg-av">${ini(v)}</div><div class="cfg-nm">Poste ${slot}</div></div>
+      <div class="cfg-card-top">
+        <div class="cfg-av" style="background:${eqColor}">${ini(v)}</div>
+        <div class="cfg-nm">Poste ${slot}</div>
+      </div>
       <div class="cfg-fields">
-        <div class="cfg-f"><div class="cfg-l">Nom du vendeur</div>
-        <input type="text" class="cfg-i name-i" id="vn-${slot}" value="${v}" placeholder="Prénom N."></div>
+        <div class="cfg-f">
+          <div class="cfg-l">Nom du vendeur</div>
+          <input type="text" class="cfg-i name-i" id="vn-${slot}" value="${v}" placeholder="Prénom N.">
+        </div>
       </div>
     </div>`;
   });
-  return`<div class="sec"><div class="sec-h dir"><div class="sec-title"><div class="sic">👥</div>Paramétrage — Noms des vendeurs</div></div>
-  <div class="cfg-grid">${cards}</div>
-  <button class="btn-sv purple" onclick="saveCfg()">Enregistrer les noms</button></div>`;
+  // Section attribution équipe utilisateurs
+  var userRows='';
+  // On charge les utilisateurs depuis la DB via une fonction séparée
+  return`<div class="sec">
+    <div class="sec-h dir">
+      <div class="sec-title"><div class="sic">👥</div>Noms vendeurs — ${eqLabel}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.5)">Équipe affichée : ${eq} · basculez avec le bouton VN/VO</div>
+    </div>
+    <div class="cfg-grid">${cards}</div>
+    <button class="btn-sv purple" onclick="saveCfg()">Enregistrer les noms ${eq}</button>
+  </div>
+  <div class="sec" style="margin-top:12px">
+    <div class="sec-h dir"><div class="sec-title"><div class="sic">⚙️</div>Attribution équipe — Vendeurs</div></div>
+    <div id="users-equipe-list" style="padding:16px">
+      <div style="font-size:13px;color:var(--text3);text-align:center;padding:20px">
+        <button onclick="loadUsersEquipe()" style="padding:8px 20px;background:var(--navy2);color:#fff;border:none;border-radius:var(--rs);cursor:pointer;font-size:13px">
+          Charger la liste des utilisateurs
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function loadUsersEquipe(){
+  var el=document.getElementById('users-equipe-list');
+  if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3)">Chargement...</div>';
+  try{
+    var{data,error}=await db.from('utilisateurs').select('*').order('role').order('login');
+    if(error||!data){el.innerHTML='<div style="color:red;padding:16px">Erreur chargement</div>';return;}
+    var rows=data.map(function(u){
+      var eq=u.equipe||'VN';
+      var roleLabel=u.role==='vendeur'?'Vendeur':u.role==='chef'?'Chef':'Directeur';
+      return '<tr>'
+        +'<td style="padding:8px 12px;font-weight:600">'+u.login+'</td>'
+        +'<td style="padding:8px 12px;color:var(--text3)">'+roleLabel+'</td>'
+        +'<td style="padding:8px 12px">'+(u.vendeur_nom||'—')+'</td>'
+        +'<td style="padding:8px 12px">'
+        +'<select id="eq-sel-'+u.id+'" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border2);font-family:DM Sans,sans-serif;font-size:13px">'
+        +'<option value="VN"'+(eq==='VN'?' selected':'')+'">VN</option>'
+        +'<option value="VO"'+(eq==='VO'?' selected':'')+'">VO</option>'
+        +'<option value="VN,VO"'+(eq==='VN,VO'?' selected':'')+'">VN + VO</option>'
+        +'</select>'
+        +' <button onclick="saveUserEquipe('+u.id+')" style="padding:4px 10px;background:var(--green2);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px">OK</button>'
+        +'</td>'
+        +'</tr>';
+    }).join('');
+    el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:13px">'
+      +'<thead><tr style="background:var(--bg2)">'
+      +'<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Login</th>'
+      +'<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Rôle</th>'
+      +'<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Vendeur</th>'
+      +'<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Équipe</th>'
+      +'</tr></thead>'
+      +'<tbody>'+rows+'</tbody></table>';
+  }catch(e){el.innerHTML='<div style="color:red;padding:16px">Erreur: '+e.message+'</div>';}
+}
+
+async function saveUserEquipe(userId){
+  var sel=document.getElementById('eq-sel-'+userId);
+  if(!sel)return;
+  var newEquipe=sel.value;
+  try{
+    var res=await db.from('utilisateurs').update({equipe:newEquipe}).eq('id',userId);
+    if(res.error){toast('Erreur: '+res.error.message);return;}
+    toast('Équipe mise à jour ✓');
+  }catch(e){toast('Erreur: '+e.message);}
 }
 
 function locked(msg='Accès réservé au Chef de groupe ou Directeur'){
@@ -1817,20 +1933,35 @@ async function confirmG(){
 // ══ SWITCH EQUIPE ══
 async function switchEquipe(eq){
   if(eq === currentEquipe) return;
+  // Vérifier droits : vendeur ne peut pas switcher
+  if(role === 'vendeur'){toast('Accès réservé au chef ou directeur');return;}
   currentEquipe = eq;
+  // Thème visuel
+  if(eq === 'VO'){
+    document.body.classList.add('theme-vo');
+  } else {
+    document.body.classList.remove('theme-vo');
+  }
   // Mettre à jour les boutons
   var btnVN = document.getElementById('btn-vn');
   var btnVO = document.getElementById('btn-vo');
   if(btnVN && btnVO){
-    btnVN.className = 'eq-btn' + (eq==='VN' ? ' active-vn' : '');
-    btnVO.className = 'eq-btn' + (eq==='VO' ? ' active-vo' : '');
+    if(eq==='VN'){
+      btnVN.className='eq-btn active-vn';
+      btnVO.className='eq-btn';
+    } else {
+      btnVN.className='eq-btn';
+      btnVO.className='eq-btn active-vo';
+    }
   }
-  // Mettre à jour le label équipe dans la barre KPI
+  // Label équipe
   var label = document.getElementById('kb-label-team');
   if(label) label.textContent = 'Tableau de bord équipe — ' + eq;
-  // Réinitialiser et recharger les données
-  pg = VS[0];
+  // Reset pg et recharger données
+  pg = null;
   await loadData();
+  if(VS.length > 0) pg = VS[0];
+  renderAll();
 }
 
 </script>
