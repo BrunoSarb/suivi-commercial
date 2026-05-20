@@ -669,7 +669,7 @@ const db=createClient(SB_URL,SB_KEY);
 const OPTS_VN=['Cde Stock','Pack Liv','Financement','Gravage','Coyote','Waxoyl','C.Ent','A.Lease'];
 const OPTS_VO=['Cde Stock','Pack Liv','Fi Classic','LOA','Gravage','Coyote','Waxoyl','C.Ent'];
 // OPTS = liste courante selon équipe (pour compatibilité)
-var OPTS=currentEquipe==='VO'?OPTS_VO:OPTS_VN;
+var OPTS=OPTS_VN; // sera mis à jour selon l'équipe dans startApp
 function getOpts(){return currentEquipe==='VO'?OPTS_VO:OPTS_VN;}
 let leadsData={};
 let currentEquipe='VN';
@@ -1134,12 +1134,12 @@ function rMemo(){
     <div class="mk"><div class="mk-v" style="color:#7c3aed">${cs}</div><div class="mk-l">Cde Stock</div></div>
     <div class="mk"><div class="mk-v">${pl_total}</div><div class="mk-l">Pack Liv</div></div>
     <div class="mk"><div class="mk-v">${fi}</div><div class="mk-l">${currentEquipe==='VO'?'Fi+LOA':'Fin.'}</div></div>
-    ${currentEquipe==='VO'?`<div class="mk"><div class="mk-v" style="color:#f59e0b">${loa_total}</div><div class="mk-l">dont LOA</div></div>`:''}
+    ${currentEquipe==='VO'?'<div class="mk"><div class="mk-v" style="color:#f59e0b">'+loa_total+'</div><div class="mk-l">dont LOA</div></div>':''}
     <div class="mk"><div class="mk-v">${gr}</div><div class="mk-l">Gravages</div></div>
     <div class="mk"><div class="mk-v">${co}</div><div class="mk-l">Coyote</div></div>
     <div class="mk"><div class="mk-v">${wa}</div><div class="mk-l">Waxoyl</div></div>
     <div class="mk"><div class="mk-v">${ce_total}</div><div class="mk-l">C.Ent</div></div>
-    ${currentEquipe==='VN'?`<div class="mk"><div class="mk-v">${al}</div><div class="mk-l">A.Lease</div></div>`:''}
+    ${currentEquipe==='VN'?'<div class="mk"><div class="mk-v">'+al+'</div><div class="mk-l">A.Lease</div></div>':''}
     <div class="mk"><div class="mk-v">${GM.length>0?Math.round(fi/GM.length*100):0}%</div><div class="mk-l">Taux fin.</div></div>
   </div>`;
   VS.forEach(v=>{
