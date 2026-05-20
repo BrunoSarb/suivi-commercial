@@ -1,0 +1,1794 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi Commercial 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+function showReset(){
+  const b=document.getElementById('reset-box');
+  b.style.display=b.style.display==='none'?'block':'none';
+}
+
+async function sendReset(){
+  const login=document.getElementById('rst-login').value.trim().toLowerCase();
+  const pass=document.getElementById('rst-pass').value.trim();
+  if(!login||!pass){alert('Identifiant et nouveau mot de passe requis.');return}
+  if(pass.length<4){alert('Mot de passe trop court (4 caractères minimum).');return}
+  // Vérifier que le login existe — d'abord BUILTIN, puis Supabase
+  const existsLocal=!!BUILTIN[login];
+  let existsDB=false;
+  try{
+    const{data,error}=await db.from('utilisateurs').select('id').eq('login',login).limit(1);
+    if(!error&&data&&data.length>0) existsDB=true;
+  }catch(e){ console.warn('Supabase check:',e); }
+  if(!existsLocal&&!existsDB){
+    alert('Identifiant introuvable. Vérifiez votre saisie ou contactez votre administrateur.');return;
+  }
+  // Enregistrer la demande
+  try{
+    await db.from('reset_demandes').insert({login,nouveau_mdp:pass,statut:'en_attente'});
+  }catch(e){ console.warn('Demande stockée localement uniquement'); }
+  document.getElementById('rst-ok').style.display='block';
+  setTimeout(()=>{document.getElementById('rst-ok').style.display='none';document.getElementById('reset-box').style.display='none';},4000);
+}
+
+// ── PAGE MOT DE PASSE (directeur) ──
+function rPwd(){
+  if(role!=='directeur')return locked('Accès réservé au Directeur');
+  return`<div class="sec">
+    <div class="sec-h dir"><div class="sec-title"><div class="sic">🔑</div>Gestion des mots de passe</div></div>
+    <div style="padding:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Modifier un mot de passe</div>
+          <div class="cfg-fields" style="gap:10px">
+            <div class="cfg-f"><div class="cfg-l">Identifiant</div>
+              <select class="cfg-i" id="pwd-login" style="font-family:'DM Sans',sans-serif">
+                ${Object.keys(BUILTIN).map(k=>`<option value="${k}">${k}</option>`).join('')}
+              </select>
+            </div>
+            <div class="cfg-f"><div class="cfg-l">Nouveau mot de passe</div><input type="text" class="cfg-i" id="pwd-new" placeholder="Nouveau mot de passe"></div>
+            <button class="btn-ok" onclick="changePwd()" style="margin-top:4px;width:100%">Valider le changement</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Demandes de réinitialisation</div>
+          <div id="reset-list">
+            <div style="color:var(--text3);font-size:13px">Chargement...</div>
+          </div>
+          <button onclick="loadResets()" style="margin-top:10px;background:none;border:1px solid var(--border2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif">Actualiser</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function changePwd(){
+  const login=document.getElementById('pwd-login')?.value;
+  const pass=document.getElementById('pwd-new')?.value.trim();
+  if(!login||!pass){toast('Identifiant et mot de passe requis');return}
+  if(pass.length<4){toast('Mot de passe trop court (4 caractères min.)');return}
+  // Update BUILTIN local
+  if(BUILTIN[login]) BUILTIN[login].pass=pass;
+  // Update Supabase
+  const{error}=await db.from('utilisateurs').update({mot_de_passe:pass}).eq('login',login);
+  if(error) toast('⚠️ Erreur Supabase — changement local uniquement');
+  else toast(`Mot de passe de "${login}" modifié ✓`);
+  document.getElementById('pwd-new').value='';
+}
+
+async function loadResets(){
+  const el=document.getElementById('reset-list');
+  if(!el)return;
+  try{
+    const{data,error}=await db.from('reset_demandes').select('*').eq('statut','en_attente').order('created_at',{ascending:false});
+    if(error||!data||data.length===0){
+      el.innerHTML='<div style="color:var(--text3);font-size:13px">Aucune demande en attente</div>';return;
+    }
+    el.innerHTML=data.map(d=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:6px;margin-bottom:6px;border:1px solid var(--border)">
+        <div>
+          <div style="font-weight:500;font-size:13px">${d.login}</div>
+          <div style="font-size:11px;color:var(--text3)">Nouveau mdp : <code style="background:#f0f4ff;padding:1px 5px;border-radius:3px">${d.nouveau_mdp}</code></div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="validerReset(${d.id},'${d.login}','${d.nouveau_mdp}')" style="background:#dcfce7;color:#15803d;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Valider</button>
+          <button onclick="refuserReset(${d.id})" style="background:var(--red2);color:#b91c1c;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Refuser</button>
+        </div>
+      </div>`).join('');
+  }catch(e){el.innerHTML='<div style="color:var(--text3);font-size:12px">Table reset_demandes manquante — lancez le SQL Supabase</div>'}
+}
+
+async function validerReset(id,login,pass){
+  if(BUILTIN[login])BUILTIN[login].pass=pass;
+  await db.from('utilisateurs').update({mot_de_passe:pass}).eq('login',login).catch(()=>{});
+  await db.from('reset_demandes').update({statut:'validé'}).eq('id',id).catch(()=>{});
+  toast(`Mot de passe de "${login}" mis à jour ✓`);
+  loadResets();
+}
+
+async function refuserReset(id){
+  await db.from('reset_demandes').update({statut:'refusé'}).eq('id',id).catch(()=>{});
+  toast('Demande refusée');
+  loadResets();
+}
+</script>
+<style>
+:root{
+  --navy:#0f1f3d;--navy2:#1a3a6e;--navy3:#2251a3;
+  --gold:#f0a500;--green:#06d6a0;--green2:#059669;--green3:#ecfdf5;
+  --red:#ef4444;--red2:#fee2e2;--orange:#f97316;--orange2:#fff7ed;
+  --blue2:#eff6ff;--purple2:#f5f3ff;
+  --bg:#f0f4ff;--card:#fff;
+  --text:#0f1f3d;--text2:#4b5a7a;--text3:#8896b3;
+  --border:rgba(15,31,61,.09);--border2:rgba(15,31,61,.16);
+  --r:12px;--rs:8px;--sh:0 1px 3px rgba(15,31,61,.07);--sh-md:0 8px 32px rgba(15,31,61,.15);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px;display:flex;flex-direction:column;min-height:100vh}
+
+/* ══ LOGIN ══ */
+.login-wrap{
+  position:fixed;inset:0;background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 60%,#1a4a8e 100%);
+  display:flex;align-items:center;justify-content:center;z-index:9000;
+}
+.login-wrap.hidden{display:none}
+.login-card{
+  background:var(--card);border-radius:20px;padding:40px 44px;width:380px;
+  box-shadow:var(--sh-md);position:relative;overflow:hidden;
+}
+.login-card::before{
+  content:'';position:absolute;top:-60px;right:-60px;
+  width:180px;height:180px;border-radius:50%;
+  background:linear-gradient(135deg,rgba(240,165,0,.15),rgba(26,58,110,.1));
+}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:28px}
+.login-dot{width:10px;height:10px;border-radius:50%;background:var(--gold)}
+.login-title{font-size:18px;font-weight:600;color:var(--navy)}
+.login-subtitle{font-size:13px;color:var(--text3);margin-bottom:28px;line-height:1.5}
+.login-field{margin-bottom:16px}
+.login-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px}
+.login-input{
+  width:100%;padding:10px 14px;border-radius:var(--rs);
+  border:1.5px solid var(--border2);background:var(--bg);
+  color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;
+  transition:border .15s;
+}
+.login-input:focus{outline:none;border-color:var(--navy2);background:var(--card)}
+.login-btn{
+  width:100%;padding:11px;background:var(--navy2);color:#fff;
+  border:none;border-radius:var(--rs);font-size:14px;font-weight:600;
+  cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:6px;
+  transition:background .15s;letter-spacing:.01em;
+}
+.login-btn:hover{background:var(--navy3)}
+.login-error{
+  background:var(--red2);color:var(--red);border-radius:var(--rs);
+  padding:10px 14px;font-size:13px;margin-top:14px;display:none;
+}
+.login-error.show{display:block}
+.login-roles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
+.role-hint{text-align:center;padding:8px;background:var(--bg);border-radius:var(--rs);font-size:11px;color:var(--text3)}
+.role-hint strong{display:block;color:var(--text2);margin-bottom:2px}
+
+/* ══ BRAND BAR ══ */
+.brand-bar{background:var(--navy);height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:200}
+.brand{display:flex;align-items:center;gap:10px;color:#fff;font-size:15px;font-weight:600}
+.brand-dot{width:8px;height:8px;border-radius:50%;background:var(--gold)}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.user-badge{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.1);border-radius:20px;padding:4px 12px 4px 6px}
+.user-av{width:24px;height:24px;border-radius:50%;background:var(--gold);color:#7c5200;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+.user-name{font-size:12px;color:rgba(255,255,255,.85);font-weight:500}
+.user-role{font-size:10px;color:rgba(255,255,255,.45)}
+.btn-logout{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .12s}
+.btn-logout:hover{background:rgba(255,255,255,.2);color:#fff}
+
+/* ══ KPI BARS ══ */
+.kpibar{background:var(--navy2);padding:6px 24px 10px;position:sticky;top:48px;z-index:190}
+.kpibar.vend{background:#112455;border-top:1px solid rgba(255,255,255,.06);display:none;position:relative;top:auto}
+.kpibar.vend.on{display:block}
+.kb-label{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:rgba(255,255,255,.7);margin-bottom:6px}
+.kpi-row{display:flex;align-items:stretch;gap:0}
+.kdiv{width:1px;background:rgba(255,255,255,.1);margin:0 6px;align-self:stretch}
+.kpi{padding:4px 14px;min-width:80px}
+.kpi-lbl{font-size:10px;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;white-space:nowrap;font-weight:500}
+.kv{font-size:22px;font-weight:600;color:#fff;font-family:'DM Mono',monospace;line-height:1.1}
+.kv.sm{font-size:17px}
+.kv.gold{color:var(--gold)}.kv.green{color:var(--green)}.kv.orange{color:#fdba74}
+.kv.blue{color:#93c5fd}.kv.purple{color:#c4b5fd}
+.kpi-sub{font-size:11px;color:rgba(255,255,255,.7);margin-top:2px;font-weight:500}
+.kprog{height:3px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:4px;overflow:hidden;min-width:60px}
+.kprog-f{height:100%;border-radius:2px;transition:width .6s ease;background:var(--green)}
+
+/* ══ LAYOUT ══ */
+.layout{display:flex;min-height:0;flex:1}
+.sidebar{width:175px;min-width:175px;background:var(--card);border-right:1px solid var(--border);overflow-y:auto;padding:10px 8px;position:sticky;top:0;max-height:100vh}
+.sb-lbl{font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;padding:0 8px;margin:12px 0 5px}
+.sb-lbl:first-child{margin-top:4px}
+.sbb{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border-radius:var(--rs);border:none;background:transparent;cursor:pointer;text-align:left;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text2);transition:all .12s}
+.sbb:hover{background:var(--bg)}
+.sbb.act{background:#eef2ff;color:var(--navy2);font-weight:500}
+.sbb.g.act{background:var(--green3);color:var(--green2)}
+.sbb.am.act{background:#fffbeb;color:#92400e}
+.sbb.ch.act{background:var(--orange2);color:#9a3412}
+.sbb.dir.act{background:#f5f3ff;color:#6d28d9}
+.av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;background:#dde3f5;color:var(--navy2)}
+.sbb.act .av{background:var(--navy2);color:#fff}
+.sbb.g.act .av{background:var(--green2);color:#fff}
+.sbb.am.act .av{background:#d97706;color:#fff}
+.sbb.ch.act .av{background:var(--orange);color:#fff}
+.sbb.dir.act .av{background:#7c3aed;color:#fff}
+.vn{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vb{font-size:10px;font-family:'DM Mono',monospace;background:var(--bg);border-radius:10px;padding:1px 6px;color:var(--text3);font-weight:500}
+.sbb.act .vb{background:var(--navy2);color:#fff}
+.main{flex:1;padding:18px 22px;display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* ══ SECTIONS ══ */
+.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh)}
+.sec-h{padding:10px 18px;display:flex;align-items:center;justify-content:space-between}
+.sec-h.n1{background:var(--navy)}.sec-h.n2{background:var(--navy2)}.sec-h.gn{background:var(--green2)}
+.sec-h.mm{background:#15803d}.sec-h.rk{background:#1e1b4b}.sec-h.ch{background:#9a3412}
+.sec-h.dir{background:#6d28d9}.sec-h.cfg{background:#0f4c81}
+.sec-title{font-size:13px;font-weight:500;color:#fff;display:flex;align-items:center;gap:8px}
+.sic{width:20px;height:20px;border-radius:4px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:11px}
+
+/* ══ COUNTER ══ */
+.ctr-w{display:flex;align-items:center;gap:6px}
+.ctr-b{background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px;display:flex;align-items:center;gap:8px}
+.ctr-n{font-family:'DM Mono',monospace;font-size:18px;font-weight:500;color:var(--gold);min-width:26px;text-align:center}
+.ctr-l{font-size:10px;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.05em;font-weight:500}
+.btn-raz{font-size:10px;font-family:'DM Sans',sans-serif;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.65);padding:3px 9px;border-radius:5px;cursor:pointer;transition:all .12s}
+.btn-raz:hover{background:rgba(255,255,255,.2);color:#fff}
+
+/* ══ INPUT ══ */
+.inp-row{display:grid;grid-template-columns:150px 1fr 1fr 110px;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);background:#fafbff}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fl{font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.fi{padding:7px 11px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--card);color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;transition:border .12s}
+.fi:focus{outline:none;border-color:var(--navy2)}
+.btn-ok{align-self:flex-end;background:var(--navy2);color:#fff;border:none;padding:8px 16px;border-radius:var(--rs);font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap}
+.btn-ok:hover{background:var(--navy3)}
+
+/* ══ TABLE ══ */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#f8f9ff;padding:8px 14px;text-align:left;font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafbff}
+.rn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--bg);font-size:11px;font-weight:500;color:var(--text3);font-family:'DM Mono',monospace}
+.cd{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)}
+.cc{font-weight:500}.cv{font-size:12px;color:var(--text3)}
+
+/* ══ BUTTONS ══ */
+.acts{display:flex;gap:5px;align-items:center}
+.ba{padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Mono',monospace;border:1.5px solid transparent;transition:all .12s}
+.bAC{background:var(--blue2);color:#1d4ed8;border-color:#bfdbfe}.bAC:hover{background:#dbeafe}
+.bP{background:var(--red2);color:#b91c1c;border-color:#fecaca}.bP:hover{background:#fecaca}
+.bG{background:var(--green3);color:#15803d;border-color:#bbf7d0}.bG:hover{background:#bbf7d0}
+
+/* ══ OPTS ══ */
+.opts{display:flex;gap:4px;flex-wrap:wrap}
+.op{padding:3px 8px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--bg);color:var(--text3);transition:all .12s;font-family:'DM Sans',sans-serif;white-space:nowrap}
+.op.on{border-color:var(--navy2);background:var(--navy2);color:#fff}
+.op.stock{border-color:#7c3aed;color:#7c3aed;background:#f5f3ff;font-weight:700}
+.op.stock.on{background:#7c3aed;color:#fff;border-color:#7c3aed}
+.empty-r td{text-align:center;color:var(--text3);padding:28px;font-size:13px}
+.bdg{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.bg-g{background:#dcfce7;color:#15803d}
+
+/* ══ LOADER / TOAST ══ */
+.loader{position:fixed;inset:0;background:rgba(15,31,61,.65);display:flex;align-items:center;justify-content:center;z-index:8000;backdrop-filter:blur(4px)}
+.loader.hidden{display:none}
+.lcard{background:var(--card);border-radius:var(--r);padding:28px 36px;text-align:center}
+.spin{width:32px;height:32px;border:3px solid var(--border2);border-top-color:var(--navy2);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ltxt{font-size:14px;color:var(--text2)}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--navy);color:#fff;padding:10px 18px;border-radius:var(--rs);font-size:13px;z-index:1000;transform:translateY(60px);opacity:0;transition:all .22s}
+.toast.show{transform:translateY(0);opacity:1}
+
+/* ══ RANKING ══ */
+.rk-grid{padding:18px;display:flex;flex-direction:column;gap:12px}
+.rk-row{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border-radius:var(--rs);border:1px solid var(--border);transition:all .15s}
+.rk-row:hover{border-color:var(--border2);box-shadow:var(--sh)}
+.rk-pos{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;font-family:'DM Mono',monospace;flex-shrink:0}
+.p1{background:#15803d;color:#fff;box-shadow:0 0 0 3px rgba(21,128,61,.25)}.p2{background:#22c55e;color:#fff}.p3{background:#86efac;color:#15803d}.pn{background:var(--bg);color:var(--text3);border:1px solid var(--border2)}
+.rk-av{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;background:var(--navy2);color:#fff}
+.rk-info{width:130px;flex-shrink:0}
+.rk-name{font-weight:500;font-size:13px;margin-bottom:3px}
+.rk-stat{font-size:11px;color:var(--text3)}
+.rk-bar-w{flex:1;min-width:0}
+.rk-bar-top{display:flex;justify-content:space-between;margin-bottom:5px}
+.rk-bar-pct{font-size:10px;color:var(--text3)}
+.rk-track{height:12px;background:var(--border);border-radius:6px;overflow:hidden}
+.rk-fill{height:100%;border-radius:6px;transition:width .8s cubic-bezier(.25,.46,.45,.94)}
+.c0{background:linear-gradient(90deg,#f0a500,#ffd166)}.c1{background:linear-gradient(90deg,#3b82f6,#93c5fd)}
+.c2{background:linear-gradient(90deg,#f97316,#fdba74)}.c3{background:linear-gradient(90deg,#8b5cf6,#c4b5fd)}
+.c4{background:linear-gradient(90deg,#06d6a0,#6ee7b7)}.c5{background:linear-gradient(90deg,#ec4899,#f9a8d4)}
+.c6{background:linear-gradient(90deg,#14b8a6,#5eead4)}.c7{background:linear-gradient(90deg,#a855f7,#d8b4fe)}
+.c8{background:linear-gradient(90deg,#22c55e,#86efac)}
+.rk-val{width:44px;text-align:right;font-family:'DM Mono',monospace;font-size:16px;font-weight:600;flex-shrink:0}
+
+/* ══ CHEF/DIRECTEUR GRIDS ══ */
+.cfg-grid{padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.cfg-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--rs);padding:14px 16px}
+.cfg-card-top{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.cfg-av{width:28px;height:28px;border-radius:50%;background:var(--navy2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600}
+.cfg-nm{font-weight:500;font-size:13px}
+.cfg-fields{display:flex;flex-direction:column;gap:8px}
+.cfg-f{display:flex;flex-direction:column;gap:3px}
+.cfg-l{font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.cfg-i{padding:6px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--card);color:var(--text);font-size:13px;font-family:'DM Mono',monospace;width:100%}
+.cfg-i:focus{outline:none;border-color:var(--navy2)}
+.cfg-i.name-i{font-family:'DM Sans',sans-serif}
+.btn-sv{margin:0 16px 16px;background:var(--orange);color:#fff;border:none;padding:10px;border-radius:var(--rs);font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;width:calc(100% - 32px)}
+.btn-sv:hover{background:#ea6906}
+.btn-sv.purple{background:#7c3aed}.btn-sv.purple:hover{background:#6d28d9}
+
+/* ══ MEMO ══ */
+.mk-row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);background:#fafbff}
+.mk{text-align:center}
+.mk-v{font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:var(--navy2)}
+.mk-l{font-size:11px;color:var(--text2);margin-top:2px;font-weight:500}
+
+/* ══ LOCKED PAGE ══ */
+.locked{padding:60px;text-align:center;color:var(--text3)}
+.locked-icon{font-size:42px;margin-bottom:14px}
+.locked-title{font-size:16px;font-weight:500;color:var(--text2);margin-bottom:6px}
+.locked-sub{font-size:13px}
+
+/* LEADS BLOCK */
+.leads-wrap{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 18px;background:#fafbff;border-bottom:1px solid var(--border)}
+.leads-lot{background:var(--card);border-radius:var(--rs);border:1.5px solid var(--border2);padding:12px 14px}
+.leads-lot.lot1{border-left:4px solid var(--navy2)}
+.leads-lot.lot2{border-left:4px solid var(--orange)}
+.leads-lot-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.leads-lot.lot1 .leads-lot-title{color:var(--navy2)}
+.leads-lot.lot2 .leads-lot-title{color:var(--orange)}
+.leads-numbers{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.leads-num-block{text-align:center}
+.leads-num{font-size:22px;font-weight:700;font-family:'DM Mono',monospace;line-height:1}
+.leads-num.treated{color:var(--green2)}
+.leads-num.remaining.ok{color:var(--green2)}
+.leads-num.remaining.warn{color:var(--orange)}
+.leads-num.remaining.danger{color:var(--red)}
+.leads-num-lbl{font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.leads-sep{width:1px;height:36px;background:var(--border);flex-shrink:0}
+.leads-progress{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:6px}
+.leads-progress-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.leads-lot.lot1 .leads-progress-fill{background:var(--navy2)}
+.leads-lot.lot2 .leads-progress-fill{background:var(--orange)}
+.leads-pct{font-size:11px;font-weight:600;margin-bottom:8px}
+.leads-lot.lot1 .leads-pct{color:var(--navy2)}
+.leads-lot.lot2 .leads-pct{color:var(--orange)}
+.leads-input-row{display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.leads-input{width:60px;padding:4px 8px;border-radius:5px;border:1.5px solid var(--border2);background:var(--bg);color:var(--text);font-size:13px;font-family:'DM Mono',monospace;text-align:center}
+.leads-input:focus{outline:none;border-color:var(--green2)}
+.leads-btn-ok{padding:4px 10px;background:var(--green2);color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif}
+.leads-btn-ok:hover{background:#047857}
+.leads-maj{font-size:9px;color:var(--text3);margin-left:auto;text-align:right;line-height:1.4}
+.leads-maj strong{color:var(--text2);font-weight:600}
+.leads-chef-input{width:60px;padding:4px 8px;border-radius:5px;border:1.5px solid var(--navy2);background:#eef2ff;color:var(--navy2);font-size:13px;font-family:'DM Mono',monospace;text-align:center;font-weight:600}
+.leads-recap{padding:16px 18px}
+.leads-recap-table{width:100%;border-collapse:collapse;font-size:13px}
+.leads-recap-table th{background:var(--navy2);color:#fff;padding:8px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;text-align:center;border:1px solid rgba(255,255,255,.1)}
+.leads-recap-table th.th-left{text-align:left}
+.leads-recap-table td{padding:8px 12px;border:1px solid var(--border);text-align:center;vertical-align:middle}
+.leads-recap-table tr:hover td{background:#f8f9ff}
+.leads-recap-pct-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:3px;min-width:60px}
+.leads-recap-pct-fill{height:100%;border-radius:3px}
+.fill-lot1{background:var(--navy2)}.fill-lot2{background:var(--orange)}
+
+.kpi.kpi-accent{
+  background:rgba(255,255,255,0.12);
+  border-radius:6px;
+  margin:2px 0;
+  position:relative;
+}
+.kpi.kpi-accent::before{
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;bottom:0;
+  border-radius:6px;
+  border:1px solid rgba(255,255,255,0.2);
+  pointer-events:none;
+}
+
+/* ══ MODALE VALIDATION ══ */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,31,61,.6);z-index:5000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.modal-overlay.hidden{display:none}
+.modal-card{background:#fff;border-radius:var(--r);padding:28px 32px;width:420px;box-shadow:0 8px 40px rgba(15,31,61,.2)}
+.modal-title{font-size:16px;font-weight:600;color:var(--navy);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.modal-sub{font-size:13px;color:var(--text3);margin-bottom:20px}
+.modal-field{margin-bottom:14px}
+.modal-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px}
+.modal-input{width:100%;padding:9px 12px;border-radius:var(--rs);border:1.5px solid var(--border2);font-size:14px;font-family:'DM Sans',sans-serif;color:var(--text);background:#fff;transition:border .12s}
+.modal-input:focus{outline:none;border-color:var(--navy2)}
+.modal-input.readonly{background:var(--bg);color:var(--text2)}
+.modal-btns{display:flex;gap:10px;margin-top:20px}
+.modal-btn-cancel{flex:1;padding:10px;background:var(--bg);color:var(--text2);border:1px solid var(--border2);border-radius:var(--rs);font-size:14px;cursor:pointer;font-family:'DM Sans',sans-serif}
+.modal-btn-confirm{flex:2;padding:10px;background:var(--green2);color:#fff;border:none;border-radius:var(--rs);font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif}
+.modal-btn-confirm:hover{background:#047857}
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══ -->
+<div class="login-wrap" id="login-wrap">
+  <div class="login-card">
+    <div class="login-logo"><div class="login-dot"></div><div class="login-title">Suivi Commercial 2026</div></div>
+    <div class="login-subtitle">Connectez-vous pour accéder à votre espace de travail.</div>
+    <div class="login-field">
+      <label class="login-label">Identifiant</label>
+      <input class="login-input" id="li-login" type="text" placeholder="Ex : nicolas" autocomplete="username">
+    </div>
+    <div class="login-field">
+      <label class="login-label">Mot de passe</label>
+      <input class="login-input" id="li-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Se connecter</button>
+    <div class="login-error" id="li-err">Identifiant ou mot de passe incorrect.</div>
+    <div style="text-align:center;margin-top:14px">
+      <button onclick="showReset()" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;text-decoration:underline">Mot de passe oublié ?</button>
+    </div>
+    <div id="reset-box" style="display:none;margin-top:12px;padding:12px;background:var(--bg);border-radius:var(--rs);border:1px solid var(--border2)">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-weight:500">Réinitialisation</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Saisissez votre identifiant et un nouveau mot de passe. Un administrateur devra valider la demande.</div>
+      <input id="rst-login" class="login-input" style="margin-bottom:6px;font-size:13px;padding:7px 10px" type="text" placeholder="Votre identifiant">
+      <input id="rst-pass" class="login-input" style="margin-bottom:6px;font-size:13px;padding:7px 10px" type="password" placeholder="Nouveau mot de passe">
+      <button onclick="sendReset()" style="width:100%;padding:8px;background:var(--navy2);color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Envoyer la demande</button>
+      <div id="rst-ok" style="display:none;margin-top:8px;font-size:12px;color:var(--green2);font-weight:500">✓ Demande envoyée — un administrateur validera votre demande.</div>
+    </div>
+    <div class="login-roles">
+      <div class="role-hint"><strong>Vendeur</strong>Fiche personnelle</div>
+      <div class="role-hint"><strong>Chef de groupe</strong>Gestion équipe</div>
+      <div class="role-hint"><strong>Directeur</strong>Accès complet</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ LOADER ══ -->
+<div class="loader hidden" id="loader"><div class="lcard"><div class="spin"></div><div class="ltxt">Chargement...</div></div></div>
+<div class="toast" id="toast"></div>
+
+<!-- ══ APP (hidden until login) ══ -->
+<div id="app" style="display:none;flex-direction:column;flex:1">
+
+  <div class="brand-bar">
+    <div class="brand"><div class="brand-dot"></div>Suivi Commercial 2026</div>
+    <div class="topbar-right">
+      <div class="user-badge">
+        <div class="user-av" id="ub-av">?</div>
+        <div>
+          <div class="user-name" id="ub-name">—</div>
+          <div class="user-role" id="ub-role">—</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="doLogout()">Déconnexion</button>
+    </div>
+  </div>
+
+  <!-- KPI EQUIPE -->
+  <div class="kpibar" id="kb-team">
+    <div class="kb-label">Tableau de bord équipe</div>
+    <div class="kpi-row">
+      <!-- BLOC 1: Leads + Contacts + AC -->
+      <div class="kpi"><div class="kpi-lbl">Leads ouverts</div><div class="kv orange" id="t-lo">0</div><div class="kpi-sub">à traiter</div></div>
+      <div class="kpi"><div class="kpi-lbl">Contacts saisis</div><div class="kv blue" id="t-ct">0</div><div class="kpi-sub">cumul équipe</div></div>
+      <div class="kpi"><div class="kpi-lbl">Affaires chaudes</div><div class="kv orange" id="t-ac">0</div><div class="kpi-sub">en cours</div></div>
+      <div class="kdiv"></div>
+      <!-- BLOC 2: Obj + Réalisations + Financements (fond accentué) -->
+      <div class="kpi kpi-accent"><div class="kpi-lbl">Obj. commandes</div><div class="kv gold" id="t-ob">0</div><div class="kpi-sub">cumulé équipe</div></div>
+      <div class="kpi kpi-accent" style="min-width:110px">
+        <div class="kpi-lbl">Réalisations</div>
+        <div class="kv green" id="t-re">0</div>
+        <div class="kprog"><div class="kprog-f" id="t-pg" style="width:0%"></div></div>
+        <div class="kpi-sub" id="t-pc">0% obj.</div>
+      </div>
+      <div class="kpi kpi-accent">
+        <div class="kpi-lbl">Financements</div>
+        <div class="kv" id="t-fi">0</div>
+        <div class="kpi-sub" id="t-pfi">0%</div>
+      </div>
+      <div class="kdiv"></div>
+      <!-- BLOC 3: Options -->
+      <div class="kpi"><div class="kpi-lbl">Gravages</div><div class="kv sm" id="t-gr">0</div><div class="kpi-sub" id="t-pgr">0%</div></div>
+      <div class="kpi"><div class="kpi-lbl">Coyote</div><div class="kv sm purple" id="t-co">0</div><div class="kpi-sub" id="t-pco">0%</div></div>
+      <div class="kpi"><div class="kpi-lbl">Waxoyl</div><div class="kv sm" id="t-wa">0</div><div class="kpi-sub" id="t-pwa">0%</div></div>
+      <div class="kpi"><div class="kpi-lbl">A.Lease</div><div class="kv sm" id="t-al">0</div><div class="kpi-sub" id="t-pal">0%</div></div>
+      <div class="kdiv"></div>
+      <!-- BLOC 4: Cde Stock -->
+      <div class="kpi" style="border-left:2px solid #7c3aed;padding-left:12px;margin-left:2px">
+        <div class="kpi-lbl" style="color:#ddd6fe">Cde Stock</div>
+        <div class="kv" id="t-cs" style="color:#e9d5ff">0</div>
+        <div class="kpi-sub" id="t-pcs" style="color:#ddd6fe">0%</div>
+      </div>
+      <div class="kdiv"></div>
+      <!-- BLOC 5: Taux -->
+      <div class="kpi"><div class="kpi-lbl">Tx Leads</div><div class="kv sm" id="t-tl">0%</div><div class="kpi-sub">traitement</div></div>
+      <div class="kpi"><div class="kpi-lbl">Tx Transfo.</div><div class="kv sm" id="t-tx">0%</div><div class="kpi-sub">contacts→cde</div></div>
+    </div>
+  </div>
+
+  <!-- KPI VENDEUR<!-- KPI VENDEUR individuel -->
+  <div class="kpibar vend" id="kb-vend">
+    <div class="kb-label" id="vk-nm" style="font-size:14px;font-weight:600;color:#ffffff;letter-spacing:-.01em;margin-bottom:8px">Vendeur</div>
+    <div class="kpi-row">
+      <!-- BLOC 1: Leads + Contacts + AC -->
+      <div class="kpi"><div class="kpi-lbl">Leads ouverts</div><div class="kv sm orange" id="v-lo">0</div><div class="kpi-sub">à traiter</div></div>
+      <div class="kpi"><div class="kpi-lbl">Contacts saisis</div><div class="kv sm blue" id="v-ct">0</div><div class="kpi-sub" id="v-ct-actifs" style="color:rgba(255,255,255,.6)">0 actifs</div></div>
+      <div class="kpi"><div class="kpi-lbl">Affaires chaudes</div><div class="kv sm orange" id="v-ac">0</div><div class="kpi-sub">en cours</div></div>
+      <div class="kdiv"></div>
+      <!-- BLOC 2: Obj + Réalisations + Financements (fond accentué) -->
+      <div class="kpi kpi-accent"><div class="kpi-lbl">Obj. commandes</div><div class="kv sm gold" id="v-ob">0</div></div>
+      <div class="kpi kpi-accent" style="min-width:110px">
+        <div class="kpi-lbl">Réalisations</div>
+        <div class="kv sm green" id="v-re">0</div>
+        <div class="kprog"><div class="kprog-f" id="v-pg" style="width:0%"></div></div>
+        <div class="kpi-sub" id="v-pc">0% obj.</div>
+      </div>
+      <div class="kpi kpi-accent">
+        <div class="kpi-lbl">Financements</div>
+        <div class="kv sm" id="v-fi">0</div>
+        <div class="kpi-sub" id="v-pfi">0%</div>
+      </div>
+      <div class="kdiv"></div>
+      <!-- BLOC 3: Options -->
+      <div class="kpi"><div class="kpi-lbl">Gravages</div><div class="kv sm sm" id="v-gr">0</div><div class="kpi-sub" id="v-pgr">0%</div></div>
+      <div class="kpi"><div class="kpi-lbl">Coyote</div><div class="kv sm sm purple" id="v-co">0</div><div class="kpi-sub" id="v-pco">0%</div></div>
+      <div class="kpi"><div class="kpi-lbl">Waxoyl</div><div class="kv sm sm" id="v-wa">0</div><div class="kpi-sub" id="v-pwa">0%</div></div>
+      <div class="kpi"><div class="kpi-lbl">A.Lease</div><div class="kv sm sm" id="v-al">0</div><div class="kpi-sub" id="v-pal">0%</div></div>
+      <div class="kdiv"></div>
+      <!-- BLOC 4: Cde Stock -->
+      <div class="kpi" style="border-left:2px solid #7c3aed;padding-left:12px;margin-left:2px">
+        <div class="kpi-lbl" style="color:#ddd6fe">Cde Stock</div>
+        <div class="kv sm" id="v-cs" style="color:#e9d5ff">0</div>
+        <div class="kpi-sub" id="v-pcs" style="color:#ddd6fe">0%</div>
+      </div>
+      <div class="kdiv"></div>
+      <!-- BLOC 5: Taux -->
+      <div class="kpi"><div class="kpi-lbl">Tx Leads</div><div class="kv sm sm" id="v-tl">0%</div><div class="kpi-sub">traitement</div></div>
+      <div class="kpi"><div class="kpi-lbl">Tx Transfo.</div><div class="kv sm sm" id="v-tx">0%</div><div class="kpi-sub">contacts→cde</div></div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar" id="sidebar"></div>
+    <div class="main" id="main"></div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- ══ MODALE VALIDATION COMMANDE (hors app pour stabilité) ══ -->
+<div class="modal-overlay hidden" id="modal-valid">
+  <div class="modal-card">
+    <div class="modal-title">🏆 Valider la commande</div>
+    <div class="modal-sub">Vérifiez et modifiez si nécessaire avant de confirmer.</div>
+    <div class="modal-field">
+      <label class="modal-label">Client</label>
+      <input type="text" class="modal-input readonly" id="m-client" readonly>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Véhicule <span style="color:var(--green2);font-size:9px">✏️ modifiable</span></label>
+      <input type="text" class="modal-input" id="m-vehicule" placeholder="Ex : Peugeot 308">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Date</label>
+      <input type="text" class="modal-input readonly" id="m-date" readonly>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn-cancel" onclick="closeModal()">Annuler</button>
+      <button class="modal-btn-confirm" onclick="confirmG()">✓ Confirmer la commande</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SB_URL='https://eylpeidlmxojzjurbcqr.supabase.co';
+const SB_KEY='sb_publishable_TL_CKPJrEzfaFOeu-lY4iw_MckDRplv';
+const{createClient}=supabase;
+const db=createClient(SB_URL,SB_KEY);
+
+const OPTS=['Cde Stock','Financement','Gravage','Coyote','Waxoyl','A.Lease'];
+let leadsData={};
+let bilanDB={};
+let bilanTableExists=false;
+
+// ── App state ──
+let VS=['Nicolas G','Lou Ann E','Sébastien G','Loïc B','Vendeur 5','Vendeur 6','Vendeur 7','Vendeur 8','Vendeur 9'];
+let pg=null, role=null, userLogin=null, userVendeurNom=null;
+let S={}, OBJ={}, GM=[];
+
+function resetState(){
+  S={};OBJ={};GM=[];
+  VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};OBJ[v]={objectif_commandes:20,objectif_contacts:50}});
+}
+
+// ── Helpers ──
+const ini=n=>n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+const uid=()=>crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2);
+const fmt=d=>{if(!d)return'';try{return new Date(d).toLocaleDateString('fr-FR')}catch{return d}};
+const $=id=>document.getElementById(id);
+function sl(id,v){const e=$(id);if(e)e.textContent=v}
+function showL(v){$(v?'loader':'loader').classList.toggle('hidden',!v)}
+function toast(m,d=2500){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d)}
+const canAdmin=()=>role==='chef'||role==='directeur';
+const roleLabel={'vendeur':'Vendeur','chef':'Chef de groupe','directeur':'Directeur'};
+
+// ── LOGIN ──
+// Comptes intégrés (fallback si table SQL pas encore créée)
+const BUILTIN={
+  'chef':       {pass:'chef2026',  role:'chef',      nom:null},
+  'directeur':  {pass:'dir2026',   role:'directeur', nom:null},
+  'nicolas':    {pass:'vente2026', role:'vendeur',   nom:'Nicolas G'},
+  'louann':     {pass:'vente2026', role:'vendeur',   nom:'Lou Ann E'},
+  'sebastien':  {pass:'vente2026', role:'vendeur',   nom:'Sébastien G'},
+  'loic':       {pass:'vente2026', role:'vendeur',   nom:'Loïc B'},
+  'vendeur5':   {pass:'vente2026', role:'vendeur',   nom:'Vendeur 5'},
+  'vendeur6':   {pass:'vente2026', role:'vendeur',   nom:'Vendeur 6'},
+  'vendeur7':   {pass:'vente2026', role:'vendeur',   nom:'Vendeur 7'},
+  'vendeur8':   {pass:'vente2026', role:'vendeur',   nom:'Vendeur 8'},
+  'vendeur9':   {pass:'vente2026', role:'vendeur',   nom:'Vendeur 9'},
+};
+
+async function doLogin(){
+  const login=$('li-login').value.trim().toLowerCase();
+  const pass=$('li-pass').value.trim();
+  $('li-err').classList.remove('show');
+  if(!login||!pass){$('li-err').classList.add('show');return}
+  showL(true);
+
+  // 1. Essai via Supabase (table utilisateurs)
+  let loggedIn=false;
+  try{
+    const{data,error}=await db.from('utilisateurs')
+      .select('*').eq('login',login).eq('mot_de_passe',pass).limit(1);
+    if(!error && data && data.length>0){
+      const u=data[0];
+      role=u.role; userLogin=u.login; userVendeurNom=u.vendeur_nom||null;
+      loggedIn=true;
+    } else if(error){
+      console.warn('Table utilisateurs inaccessible, passage en mode intégré.',error.message);
+    }
+  }catch(e){
+    console.warn('Erreur Supabase login:',e);
+  }
+
+  // 2. Fallback sur comptes intégrés
+  if(!loggedIn){
+    const acc=BUILTIN[login];
+    if(acc && acc.pass===pass){
+      role=acc.role; userLogin=login; userVendeurNom=acc.nom;
+      loggedIn=true;
+    }
+  }
+
+  if(loggedIn){
+    await startApp();
+  } else {
+    $('li-err').classList.add('show');
+    showL(false);
+  }
+}
+
+async function startApp(){
+  // Load vendeur names from config
+  await loadVendeurNames();
+  resetState();
+  // Set default page
+  if(role==='vendeur'&&userVendeurNom){
+    pg=userVendeurNom;
+  } else {
+    pg=VS[0];
+  }
+  // Update user badge
+  sl('ub-name',userLogin);
+  sl('ub-role',roleLabel[role]||role);
+  $('ub-av').textContent=(userVendeurNom?ini(userVendeurNom):userLogin.slice(0,2).toUpperCase());
+  // Show app
+  $('login-wrap').classList.add('hidden');
+  $('app').style.display='flex';
+  await loadData();
+}
+
+function doLogout(){
+  role=null;userLogin=null;userVendeurNom=null;pg=null;
+  $('login-wrap').classList.remove('hidden');
+  $('app').style.display='none';
+  $('li-login').value='';$('li-pass').value='';
+  $('li-err').classList.remove('show');
+}
+
+$('li-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+
+// ── LOAD VENDEUR NAMES ──
+async function loadVendeurNames(){
+  try{
+    const{data}=await db.from('vendeurs_config').select('*').order('slot',{ascending:true});
+    if(data&&data.length>0){
+      VS=data.map(r=>r.nom);
+    }
+  }catch(e){console.log('Using default vendeur names')}
+}
+
+// ── LOAD DATA ──
+async function loadData(){
+  showL(true);
+  try{
+    const[cR,aR,mR,kR,oR]=await Promise.all([
+      db.from('contacts').select('*').order('date',{ascending:true}),
+      db.from('affaires').select('*').order('date',{ascending:true}),
+      db.from('memo').select('*').order('created_at',{ascending:false}),
+      db.from('compteurs').select('*'),
+      db.from('objectifs').select('*')
+    ]);
+    VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]}});GM=[];
+    (cR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].contacts.push(r)});
+    (aR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].affaires.push(r)});
+    (mR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].memo.push(r);GM.push(r)});
+    (kR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].counter=r.valeur??0});
+    (oR.data||[]).forEach(r=>{OBJ[r.vendeur]={objectif_commandes:r.objectif_commandes??20,objectif_contacts:r.objectif_contacts??50}});
+  }catch(e){console.error(e);toast('Erreur de connexion à la base')}
+  // Charger bilan annuel
+  try{
+    var bR=await db.from('bilan_annuel').select('*');
+    if(!bR.error&&bR.data){
+      bilanDB={};
+      bR.data.forEach(function(r){
+        if(!r.vendeur||!r.mois)return;
+        if(!bilanDB[r.vendeur])bilanDB[r.vendeur]={};
+        bilanDB[r.vendeur][r.mois]={re:typeof r.commandes==='number'?r.commandes:0,fi:typeof r.financements==='number'?r.financements:0};
+      });
+      bilanTableExists=true;
+    }
+  }catch(e){console.warn('bilan_annuel:',e.message||e);}
+  // Charger leads
+  try{
+    const lR=await db.from('leads').select('*');
+    if(!lR.error&&lR.data){
+      leadsData={};
+      lR.data.forEach(function(r){
+        if(!leadsData[r.vendeur])leadsData[r.vendeur]={};
+        if(!leadsData[r.vendeur][r.mois])leadsData[r.vendeur][r.mois]={};
+        leadsData[r.vendeur][r.mois]['lot'+r.lot]={injectes:r.injectes||0,traites:r.traites||0,maj_par:r.maj_par||null,maj_at:r.maj_at||null};
+      });
+    }
+  }catch(e){console.warn('leads:',e.message||e);}
+  showL(false);
+  renderAll();
+}
+
+// ── KPI CALCULATIONS ──
+function tKPI(){
+  let ct=0,ac=0,ob=0,re=0,cs=0,fi=0,gr=0,co=0,wa=0,al=0;
+  VS.forEach(v=>{
+    if(!S[v])return;
+    ct+=S[v].counter;
+    ac+=S[v].affaires.length;
+    ob+=OBJ[v]?.objectif_commandes??0;
+    re+=S[v].memo.length;
+    S[v].memo.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
+  });
+  return{ct,ac,ob,re,cs,fi,gr,co,wa,al};
+}
+function vKPI(v){
+  const s=S[v]||{contacts:[],affaires:[],memo:[],counter:0};
+  let cs=0,fi=0,gr=0,co=0,wa=0,al=0;
+  s.memo.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
+  return{ct:s.counter,ac:s.affaires.length,ob:OBJ[v]?.objectif_commandes??0,re:s.memo.length,cs,fi,gr,co,wa,al};
+}
+function pct(a,b){return b>0?Math.round(a/b*100):0}
+
+function getLeadsOuverts(vendeur){
+  // Leads restants à traiter pour ce vendeur (ou tous si null)
+  var mois=new Date().toISOString().slice(0,7);
+  var total=0;
+  var vlist = vendeur ? [vendeur] : VS;
+  vlist.forEach(function(v){
+    var lot1=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot1)||{injectes:0,traites:0};
+    var lot2=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot2)||{injectes:0,traites:0};
+    total+=Math.max(0,lot1.injectes-lot1.traites)+Math.max(0,lot2.injectes-lot2.traites);
+  });
+  return total;
+}
+
+function getLeadsTxTraitement(vendeur){
+  var mois=new Date().toISOString().slice(0,7);
+  var inj=0,tr=0;
+  var vlist = vendeur ? [vendeur] : VS;
+  vlist.forEach(function(v){
+    var lot1=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot1)||{injectes:0,traites:0};
+    var lot2=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot2)||{injectes:0,traites:0};
+    inj+=lot1.injectes+lot2.injectes;
+    tr+=lot1.traites+lot2.traites;
+  });
+  return inj>0?Math.min(100,Math.round(tr/inj*100)):0;
+}
+
+function updKPIs(){
+  var k=tKPI();
+  var lo=getLeadsOuverts(null);
+  var tl=getLeadsTxTraitement(null);
+  sl('t-lo',lo);
+  sl('t-ct',k.ct);sl('t-ac',k.ac);sl('t-ob',k.ob);sl('t-re',k.re);
+  var p=k.ob>0?Math.min(100,Math.round(k.re/k.ob*100)):0;
+  document.getElementById('t-pg').style.width=p+'%';
+  sl('t-pc',p+'% obj.');
+  sl('t-fi',k.fi);sl('t-pfi',pct(k.fi,k.re)+'%');
+  sl('t-gr',k.gr);sl('t-pgr',pct(k.gr,k.re)+'%');
+  sl('t-co',k.co);sl('t-pco',pct(k.co,k.re)+'%');
+  sl('t-wa',k.wa);sl('t-pwa',pct(k.wa,k.re)+'%');
+  sl('t-al',k.al);sl('t-pal',pct(k.al,k.re)+'%');
+  sl('t-cs',k.cs);sl('t-pcs',pct(k.cs,k.re)+'%');
+  sl('t-tl',tl+'%');
+  sl('t-tx',pct(k.re,k.ct)+'%');
+
+  var isV=VS.includes(pg);
+  document.getElementById('kb-vend').classList.toggle('on',isV);
+  if(isV){
+    var kv=vKPI(pg);
+    var vlo=getLeadsOuverts(pg);
+    var vtl=getLeadsTxTraitement(pg);
+    sl('vk-nm',pg);sl('v-lo',vlo);sl('v-ct',kv.ct);sl('v-ac',kv.ac);
+    var vActifs=S[pg]?S[pg].contacts.length:0;
+    var elActifs=document.getElementById('v-ct-actifs');
+    if(elActifs) elActifs.textContent=vActifs+' actif'+(vActifs>1?'s':'');sl('v-ob',kv.ob);sl('v-re',kv.re);
+    var vp=kv.ob>0?Math.min(100,Math.round(kv.re/kv.ob*100)):0;
+    document.getElementById('v-pg').style.width=vp+'%';
+    sl('v-pc',vp+'% obj.');
+    sl('v-fi',kv.fi);sl('v-pfi',pct(kv.fi,kv.re)+'%');
+    sl('v-gr',kv.gr);sl('v-pgr',pct(kv.gr,kv.re)+'%');
+    sl('v-co',kv.co);sl('v-pco',pct(kv.co,kv.re)+'%');
+    sl('v-wa',kv.wa);sl('v-pwa',pct(kv.wa,kv.re)+'%');
+    sl('v-al',kv.al);sl('v-pal',pct(kv.al,kv.re)+'%');
+    sl('v-cs',kv.cs);sl('v-pcs',pct(kv.cs,kv.re)+'%');
+    sl('v-tl',vtl+'%');
+    sl('v-tx',pct(kv.re,kv.ct)+'%');
+  }
+}
+
+
+function renderSB(){
+  let h=`<div class="sb-lbl">Vendeurs</div>`;
+  VS.forEach((v,i)=>{
+    const n=(S[v]?.contacts.length||0)+(S[v]?.affaires.length||0);
+    // Vendeurs only see their own tab unless admin
+    if(role==='vendeur'&&userVendeurNom&&v!==userVendeurNom)return;
+    h+=`<button class="sbb${pg===v?' act':''}" onclick="goPage('${v}')">
+      <div class="av">${ini(v)}</div><span class="vn">${v}</span>
+      ${n>0?`<span class="vb">${n}</span>`:''}
+    </button>`;
+  });
+  h+=`<div class="sb-lbl" style="margin-top:14px">Vue globale</div>`;
+  if(canAdmin()||role==='vendeur'){
+    h+=`<button class="sbb g${pg==='__memo__'?' act':''}" onclick="goPage('__memo__')"><div class="av">M</div><span class="vn">Mémo commandes</span>${GM.length>0?`<span class="vb">${GM.length}</span>`:''}</button>`;
+  }
+  h+=`<button class="sbb am${pg==='__rank__'?' act':''}" onclick="goPage('__rank__')"><div class="av">C</div><span class="vn">Classement</span></button>`;
+  h+=`<button class="sbb am${pg==='__bilan__'?' act':''}" onclick="goPage('__bilan__')"><div class="av">&#128197;</div><span class="vn">Bilan annuel</span></button>`;
+  if(canAdmin()){
+    h+=`<div class="sb-lbl" style="margin-top:14px">Administration</div>
+    <button class="sbb ch${pg==='__obj__'?' act':''}" onclick="goPage('__obj__')"><div class="av">O</div><span class="vn">Objectifs</span></button>
+    <button class="sbb ch${pg==='__raz__'?' act':''}" onclick="goPage('__raz__')"><div class="av">R</div><span class="vn">RAZ compteurs</span></button>`;
+  h+=`<button class="sbb ch${pg==='__leads__'?' act':''}" onclick="goPage('__leads__')"><div class="av">L</div><span class="vn">Recap Leads</span></button>`;
+  }
+  if(role==='directeur'){
+    h+=`<button class="sbb dir${pg==='__cfg__'?' act':''}" onclick="goPage('__cfg__')"><div class="av">N</div><span class="vn">Noms vendeurs</span></button>`;
+    h+=`<button class="sbb dir${pg==='__pwd__'?' act':''}" onclick="goPage('__pwd__')"><div class="av">🔑</div><span class="vn">Mots de passe</span></button>`;
+  }
+  $('sidebar').innerHTML=h;
+}
+
+function goPage(p){pg=p;renderAll()}
+function renderAll(){updKPIs();renderSB();renderMain()}
+function renderMain(){
+  const m=$('main');
+  if(pg==='__memo__')m.innerHTML=rMemo();
+  else if(pg==='__rank__')m.innerHTML=rRank();
+  else if(pg==='__obj__')m.innerHTML=rObj();
+  else if(pg==='__raz__')m.innerHTML=rRAZ();
+  else if(pg==='__cfg__')m.innerHTML=rCfg();
+  else if(pg==='__bilan__'){m.innerHTML=rBilan();}
+  else if(pg==='__leads__'){m.innerHTML=rLeadsRecap();}
+  else if(pg==='__pwd__'){m.innerHTML=rPwd();setTimeout(loadResets,100);}
+  else if(VS.includes(pg))m.innerHTML=rVend(pg);
+  else m.innerHTML='';
+}
+
+// ── VENDEUR PAGE ──
+function rVend(v){
+  if(!S[v])return'';
+  const s=S[v];
+  const sc=[...s.contacts].sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const sa=[...s.affaires].sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
+  let cr=sc.length?'':` <tr class="empty-r"><td colspan="5">Aucun contact — saisissez un contact ci-dessus</td></tr>`;
+  sc.forEach((c,i)=>{cr+=`<tr>
+    <td><span class="rn">${i+1}</span></td>
+    <td><span class="cd">${fmt(c.date)}</span></td>
+    <td><span class="cc">${c.client}</span></td>
+    <td><span class="cv">${c.vehicule||''}</span></td>
+    <td><div class="acts"><button class="ba bAC" onclick="doAC('${v}','${c.id}')">AC</button><button class="ba bP" onclick="doPc('${v}','${c.id}')">P</button></div></td>
+  </tr>`});
+  let ar=sa.length?'':` <tr class="empty-r"><td colspan="5">Aucune affaire chaude en cours</td></tr>`;
+  sa.forEach(a=>{
+    const op=a.opts||[];
+    const ob=OPTS.map(o=>`<span class="op${o==='Cde Stock'?' stock':''}${op.includes(o)?' on':''}" onclick="togOpt('${v}','${a.id}','${o}')">${o}</span>`).join('');
+    ar+=`<tr>
+      <td><span class="cd">${fmt(a.date)}</span></td>
+      <td><span class="cc">${a.client}</span></td>
+      <td><span class="cv">${a.vehicule||''}</span></td>
+      <td><div class="opts">${ob}</div></td>
+      <td><div class="acts"><button class="ba bG" onclick="openModalG('${v}','${a.id}')">G</button><button class="ba bP" onclick="doPa('${v}','${a.id}')">P</button></div></td>
+    </tr>`;
+  });
+  var leadsHtml=buildLeadsBlock(v,vk,new Date().toISOString().slice(0,7));
+  return leadsHtml+`
+  <div class="sec"><div class="sec-h n1">
+    <div class="sec-title"><div class="sic">📞</div>Contacts clients</div>
+    <div class="ctr-w">
+      <div class="ctr-b"><div><div class="ctr-l">Contacts traités</div><div class="ctr-n">${s.counter}</div></div></div>
+      ${canAdmin()?`<button class="btn-raz" onclick="razOne('${v}')">RAZ</button>`:''}
+    </div>
+  </div>
+  <div class="inp-row">
+    <div class="fld"><div class="fl">Date</div><input type="date" class="fi" id="id-${vk}"></div>
+    <div class="fld"><div class="fl">Nom du client</div><input type="text" class="fi" placeholder="Ex : Martin Jean" id="ic-${vk}"></div>
+    <div class="fld"><div class="fl">Véhicule</div><input type="text" class="fi" placeholder="Ex : Peugeot 308" id="iv-${vk}"></div>
+    <div class="fld"><div class="fl" style="visibility:hidden">_</div><button class="btn-ok" onclick="addC('${v}')">Valider</button></div>
+  </div>
+  <div class="tw"><table><thead><tr><th>#</th><th>Date</th><th>Client</th><th>Véhicule</th><th>Actions</th></tr></thead><tbody>${cr}</tbody></table></div>
+  </div>
+  <div class="sec"><div class="sec-h n2">
+    <div class="sec-title"><div class="sic">🔥</div>Affaires chaudes</div>
+    <div style="font-size:11px;color:rgba(255,255,255,.4)">${sa.length} en cours</div>
+  </div>
+  <div class="tw"><table><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th><th>Options</th><th>Résultat</th></tr></thead><tbody>${ar}</tbody></table></div>
+  </div>`;
+}
+
+// ── MEMO ──
+function rMemo(){
+  // Totaux globaux
+  let cs=0,fi=0,gr=0,co=0,wa=0,al=0;
+  GM.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
+
+  // Header global
+  let html=`<div class="sec"><div class="sec-h mm"><div class="sec-title"><div class="sic">🏆</div>Mémo — Vue par vendeur</div></div>
+  <div class="mk-row" style="grid-template-columns:repeat(8,1fr);border-bottom:1px solid var(--border)">
+    <div class="mk"><div class="mk-v">${GM.length}</div><div class="mk-l">Total cdes</div></div>
+    <div class="mk"><div class="mk-v" style="color:#7c3aed">${cs}</div><div class="mk-l">Cde Stock</div></div>
+    <div class="mk"><div class="mk-v">${fi}</div><div class="mk-l">Financements</div></div>
+    <div class="mk"><div class="mk-v">${gr}</div><div class="mk-l">Gravages</div></div>
+    <div class="mk"><div class="mk-v">${co}</div><div class="mk-l">Coyote</div></div>
+    <div class="mk"><div class="mk-v">${wa}</div><div class="mk-l">Waxoyl</div></div>
+    <div class="mk"><div class="mk-v">${al}</div><div class="mk-l">A.Lease</div></div>
+    <div class="mk"><div class="mk-v">${GM.length>0?Math.round(fi/GM.length*100):0}%</div><div class="mk-l">Taux fin.</div></div>
+  </div>`;
+
+  // Blocs par vendeur
+  VS.forEach(v=>{
+    const s=S[v]||{memo:[],perduAC:[],perduC:[]};
+    const memo=[...s.memo].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const perduAC=s.perduAC||[];
+    const perduC=s.perduC||[];
+    if(!memo.length&&!perduAC.length&&!perduC.length)return;
+
+    let vfi=0;
+    memo.forEach(m=>{if((m.opts||[]).includes('Financement'))vfi++;});
+
+    html+=`<div style="border-top:3px solid var(--navy2);margin-top:0">
+      <div style="background:var(--navy);padding:10px 18px;display:flex;align-items:center;gap:10px">
+        <div style="width:30px;height:30px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#7c5200">${ini(v)}</div>
+        <div style="font-size:14px;font-weight:600;color:#fff">${v}</div>
+        <div style="margin-left:auto;display:flex;gap:16px">
+          <span style="font-size:12px;color:rgba(255,255,255,.85);font-weight:500">🏆 ${memo.length} cde${memo.length>1?'s':''}</span>
+          <span style="font-size:12px;color:rgba(255,255,255,.85);font-weight:500">🔥 ${perduAC.length} AC perdue${perduAC.length>1?'s':''}</span>
+          <span style="font-size:12px;color:rgba(255,255,255,.85);font-weight:500">📞 ${perduC.length} contact${perduC.length>1?'s':''} perdus</span>
+        </div>
+      </div>`;
+
+    // Bloc 1 : Commandes gagnées
+    html+=`<div style="padding:0 0 0 0">
+      <div style="padding:7px 18px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:.05em">Commandes gagnées</span>
+        <span style="font-size:11px;color:#15803d">${memo.length>0?Math.round(vfi/memo.length*100):0}% financement</span>
+      </div>`;
+    if(!memo.length){
+      html+=`<div style="padding:14px 18px;font-size:13px;color:var(--text3);text-align:center">Aucune commande gagnée</div>`;
+    } else {
+      html+=`<div class="tw"><table style="font-size:12px"><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th><th>Options</th></tr></thead><tbody>`;
+      memo.forEach(m=>{
+        const opts=(m.opts||[]).join(', ')||'—';
+        const hasStock=(m.opts||[]).includes('Cde Stock');
+        html+=`<tr${hasStock?' style="background:#f5f3ff"':''}>
+          <td><span class="cd">${fmt(m.date)}</span></td>
+          <td><span class="cc">${m.client}</span>${hasStock?'<span style="margin-left:6px;font-size:9px;background:#7c3aed;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600">STOCK</span>':''}</td>
+          <td><span class="cv">${m.vehicule||''}</span></td>
+          <td style="color:var(--text2)">${opts}</td>
+        </tr>`;
+      });
+      html+=`</tbody></table></div>`;
+    }
+    html+=`</div>`;
+
+    // Bloc 2 : Affaires chaudes perdues
+    html+=`<div>
+      <div style="padding:7px 18px;background:#fef2f2;border-top:1px solid #fecaca;border-bottom:1px solid #fecaca">
+        <span style="font-size:11px;font-weight:600;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Affaires chaudes perdues</span>
+      </div>`;
+    if(!perduAC.length){
+      html+=`<div style="padding:14px 18px;font-size:13px;color:var(--text3);text-align:center">Aucune affaire perdue</div>`;
+    } else {
+      html+=`<div class="tw"><table style="font-size:12px"><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th></tr></thead><tbody>`;
+      perduAC.forEach(a=>{html+=`<tr><td><span class="cd">${fmt(a.date)}</span></td><td><span class="cc">${a.client}</span></td><td><span class="cv">${a.vehicule||''}</span></td></tr>`;});
+      html+=`</tbody></table></div>`;
+    }
+    html+=`</div>`;
+
+    // Bloc 3 : Contacts perdus
+    html+=`<div>
+      <div style="padding:7px 18px;background:#fff7ed;border-top:1px solid #fed7aa;border-bottom:1px solid #fed7aa">
+        <span style="font-size:11px;font-weight:600;color:#c2410c;text-transform:uppercase;letter-spacing:.05em">Contacts perdus</span>
+      </div>`;
+    if(!perduC.length){
+      html+=`<div style="padding:14px 18px;font-size:13px;color:var(--text3);text-align:center">Aucun contact perdu</div>`;
+    } else {
+      html+=`<div class="tw"><table style="font-size:12px"><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th></tr></thead><tbody>`;
+      perduC.forEach(ct=>{html+=`<tr><td><span class="cd">${fmt(ct.date)}</span></td><td><span class="cc">${ct.client}</span></td><td><span class="cv">${ct.vehicule||''}</span></td></tr>`;});
+      html+=`</tbody></table></div>`;
+    }
+    html+=`</div></div>`;
+  });
+
+  html+=`</div>`;
+  return html;
+}
+
+// ── RANKING ──
+function rRank(){
+  const rd=VS.map((v,i)=>{let fi=0;(S[v]?.memo||[]).forEach(m=>{if((m.opts||[]).includes('Financement'))fi++});return{v,i,re:S[v]?.memo.length||0,ob:OBJ[v]?.objectif_commandes??20,ac:S[v]?.affaires.length||0,ct:S[v]?.counter||0,fi}})
+    .sort((a,b)=>b.re-a.re||b.ac-a.ac);
+  let rows='';
+  rd.forEach((r,pos)=>{
+    const p=r.ob>0?Math.min(100,Math.round(r.re/r.ob*100)):0;
+    const pc=pos===0?'p1':pos===1?'p2':pos===2?'p3':'pn';
+    const pfin=r.re>0?Math.round(r.fi/r.re*100):0;
+    rows+=`<div class="rk-row">
+      <div class="rk-pos ${pc}">${pos+1}</div>
+      <div class="rk-av">${ini(r.v)}</div>
+      <div class="rk-info"><div class="rk-name">${r.v}</div><div class="rk-stat">${r.ct} contacts · ${r.ac} AC · obj. ${r.ob}</div></div>
+      <div class="rk-bar-w">
+        <div class="rk-bar-top"><span class="rk-bar-pct">${p}% de l'objectif</span><span class="rk-bar-pct">${r.re} / ${r.ob} cde</span></div>
+        <div class="rk-track"><div class="rk-fill c${r.i}" style="width:${Math.max(1,p)}%"></div></div>
+      </div>
+      <div class="rk-val">${r.re}</div>
+      <div style="width:80px;text-align:right;flex-shrink:0;border-left:2px solid #bfdbfe;padding-left:12px;margin-left:4px">
+        <div style="font-size:18px;font-weight:700;color:#1d4ed8;font-family:'DM Mono',monospace;line-height:1">${pfin}%</div>
+        <div style="font-size:10px;color:#3b82f6;font-weight:600;margin-top:2px">financement</div>
+      </div>
+    </div>`;
+  });
+  return`<div class="sec"><div class="sec-h rk"><div class="sec-title"><div class="sic">🥇</div>Classement vendeurs</div></div><div class="rk-grid">${rows}</div></div>`;
+}
+
+// ── OBJECTIFS (chef/directeur) ──
+function rObj(){
+  if(!canAdmin())return locked();
+  let cards='';
+  VS.forEach(v=>{
+    const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
+    const o=OBJ[v]||{objectif_commandes:20,objectif_contacts:50};
+    cards+=`<div class="cfg-card">
+      <div class="cfg-card-top"><div class="cfg-av">${ini(v)}</div><div class="cfg-nm">${v}</div></div>
+      <div class="cfg-fields">
+        <div class="cfg-f"><div class="cfg-l">Objectif commandes</div><input type="number" class="cfg-i" id="oc-${vk}" value="${o.objectif_commandes??20}" min="0"></div>
+        <div class="cfg-f"><div class="cfg-l">Objectif contacts</div><input type="number" class="cfg-i" id="ok-${vk}" value="${o.objectif_contacts??50}" min="0"></div>
+      </div>
+    </div>`;
+  });
+  return`<div class="sec"><div class="sec-h ch"><div class="sec-title"><div class="sic">🎯</div>Objectifs mensuels</div></div>
+  <div class="cfg-grid">${cards}</div>
+  <button class="btn-sv" onclick="saveObj()">Enregistrer tous les objectifs</button></div>`;
+}
+
+// ── RAZ COMPTEURS (chef/directeur) ──
+function rRAZ(){
+  if(!canAdmin())return locked();
+  let cards='';
+  VS.forEach(v=>{
+    const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
+    const s=S[v]||{counter:0};
+    cards+=`<div class="cfg-card" style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="cfg-av">${ini(v)}</div>
+        <div>
+          <div style="font-weight:500;font-size:13px">${v}</div>
+          <div style="font-size:11px;color:var(--text3)">Compteur : <strong style="color:var(--navy2);font-family:'DM Mono',monospace">${s.counter}</strong></div>
+        </div>
+      </div>
+      <button class="btn-raz" style="background:var(--red2);color:var(--red);border-color:#fecaca;padding:5px 12px;font-size:11px" onclick="razOne('${v}')">RAZ</button>
+    </div>`;
+  });
+  return`<div class="sec"><div class="sec-h ch"><div class="sec-title"><div class="sic">🔄</div>Remise à zéro des compteurs</div></div>
+  <div class="cfg-grid">${cards}</div>
+  <button class="btn-sv" onclick="razAll()" style="background:var(--red);">RAZ — Tous les compteurs</button></div>`;
+}
+
+// ── NOM VENDEURS CONFIG (directeur only) ──
+function rCfg(){
+  if(role!=='directeur')return locked('Accès réservé au Directeur');
+  let cards='';
+  VS.forEach((v,i)=>{
+    const slot=i+1;
+    cards+=`<div class="cfg-card">
+      <div class="cfg-card-top"><div class="cfg-av">${ini(v)}</div><div class="cfg-nm">Poste ${slot}</div></div>
+      <div class="cfg-fields">
+        <div class="cfg-f"><div class="cfg-l">Nom du vendeur</div>
+        <input type="text" class="cfg-i name-i" id="vn-${slot}" value="${v}" placeholder="Prénom N."></div>
+      </div>
+    </div>`;
+  });
+  return`<div class="sec"><div class="sec-h dir"><div class="sec-title"><div class="sic">👥</div>Paramétrage — Noms des vendeurs</div></div>
+  <div class="cfg-grid">${cards}</div>
+  <button class="btn-sv purple" onclick="saveCfg()">Enregistrer les noms</button></div>`;
+}
+
+function locked(msg='Accès réservé au Chef de groupe ou Directeur'){
+  return`<div class="sec"><div class="locked"><div class="locked-icon">🔒</div><div class="locked-title">Accès restreint</div><div class="locked-sub">${msg}</div></div></div>`;
+}
+
+// ── ACTIONS ──
+async function addC(v){
+  const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
+  const date=$('id-'+vk)?.value,client=$('ic-'+vk)?.value.trim(),veh=$('iv-'+vk)?.value.trim();
+  if(!date||!client){toast('Veuillez renseigner la date et le client');return}
+  const r={id:uid(),vendeur:v,date,client,vehicule:veh||'',opts:[]};
+  if(!S[v])S[v]={contacts:[],affaires:[],memo:[],counter:0};
+  S[v].contacts.push(r);S[v].counter++;
+  renderAll();
+  db.from('contacts').insert(r).catch(()=>{});
+  // Sauvegarder compteur
+  (async function(){
+    try{
+      var ex=await db.from('compteurs').select('id').eq('vendeur',v).limit(1);
+      if(ex.data&&ex.data.length>0) await db.from('compteurs').update({valeur:S[v].counter}).eq('vendeur',v);
+      else await db.from('compteurs').insert({vendeur:v,valeur:S[v].counter});
+    }catch(e){console.warn('ctr:',e);}
+  })();
+  toast('Contact ajouté ✓');
+}
+
+async function doAC(v,id){
+  const i=S[v].contacts.findIndex(c=>c.id===id);if(i<0)return;
+  const c=S[v].contacts.splice(i,1)[0];c.opts=[];S[v].affaires.push(c);
+  renderAll();
+  try{const r=await db.from('contacts').delete().eq('id',id);if(r.error)console.error('doAC del:',r.error.message);}
+  catch(e){console.error('doAC del:',e.message||e);}
+  try{const r=await db.from('affaires').insert({id:c.id,vendeur:v,date:c.date,client:c.client,vehicule:c.vehicule||'',opts:[]});if(r.error)console.error('doAC ins:',r.error.message);}
+  catch(e){console.error('doAC ins:',e.message||e);}
+  toast('Passé en affaire chaude 🔥');
+}
+async function doPc(v,id){
+  if(!confirm('Supprimer ce contact ?'))return;
+  const ct=S[v].contacts.find(x=>x.id===id);
+  if(ct){if(!S[v].perduC)S[v].perduC=[];S[v].perduC.push({...ct,perdu_at:new Date().toISOString()});}
+  S[v].contacts=S[v].contacts.filter(c=>c.id!==id);
+  renderAll();
+  try{const r=await db.from('contacts').delete().eq('id',id);if(r.error)console.error('doPc:',r.error.message);}
+  catch(e){console.error('doPc:',e.message||e);}
+  toast('Contact supprimé');
+}
+async function doPa(v,id){
+  if(!confirm('Marquer comme perdu ?'))return;
+  const a=S[v].affaires.find(x=>x.id===id);
+  if(a){if(!S[v].perduAC)S[v].perduAC=[];S[v].perduAC.push({...a,perdu_at:new Date().toISOString()});}
+  S[v].affaires=S[v].affaires.filter(a=>a.id!==id);
+  renderAll();
+  try{const r=await db.from('affaires').delete().eq('id',id);if(r.error)console.error('doPa:',r.error.message);}
+  catch(e){console.error('doPa:',e.message||e);}
+  toast('Affaire perdue');
+}
+async function doG(v,id,newVehicule){
+  const i=S[v].affaires.findIndex(a=>a.id===id);if(i<0)return;
+  const a=S[v].affaires.splice(i,1)[0];
+  if(newVehicule&&newVehicule.trim()) a.vehicule=newVehicule.trim();
+  a.vendeur=v;S[v].memo.push(a);GM.unshift(a);
+  renderAll();
+  // Supprimer de affaires
+  try{
+    const del=await db.from('affaires').delete().eq('id',id);
+    if(del.error) console.error('doG delete affaire:', del.error.message);
+    else console.log('Affaire supprimée OK:', id);
+  }catch(e){console.error('doG delete exception:',e.message||e);}
+  // Insérer dans memo
+  try{
+    const newId=uid();
+    const ins=await db.from('memo').insert({id:newId,vendeur:v,date:a.date,client:a.client,vehicule:a.vehicule||'',opts:a.opts||[]});
+    if(ins.error) console.error('doG insert memo:', ins.error.message);
+    else console.log('Memo inséré OK:', newId);
+  }catch(e){console.error('doG insert exception:',e.message||e);}
+  toast('Commande gagnée ! 🏆');
+}
+async function togOpt(v,id,opt){
+  const a=S[v].affaires.find(a=>a.id===id);if(!a)return;
+  const opts=a.opts||[];const i=opts.indexOf(opt);
+  if(i>=0)opts.splice(i,1);else opts.push(opt);a.opts=opts;
+  renderAll();
+  try{const r=await db.from('affaires').update({opts}).eq('id',id);if(r.error)console.error('togOpt:',r.error.message);}
+  catch(e){console.error('togOpt:',e.message||e);}
+}
+
+async function razOne(v){
+  if(!canAdmin()){toast('Réservé au chef de groupe ou directeur');return}
+  if(!confirm(`Remettre le compteur de ${v} à zéro ?`))return;
+  S[v].counter=0;renderAll();
+  db.from('compteurs').upsert({vendeur:v,valeur:0},{onConflict:'vendeur'}).catch(()=>{});
+  toast(`Compteur ${v} remis à zéro`);
+}
+async function razAll(){
+  if(!canAdmin())return;
+  if(!confirm('Remettre TOUS les compteurs à zéro ?'))return;
+  VS.forEach(v=>{if(S[v])S[v].counter=0});
+  renderAll();
+  await Promise.all(VS.map(v=>db.from('compteurs').upsert({vendeur:v,valeur:0},{onConflict:'vendeur'}).catch(()=>{})));
+  toast('Tous les compteurs remis à zéro');
+}
+
+async function saveObj(){
+  if(!canAdmin())return;
+  // Lire les valeurs des champs
+  VS.forEach(v=>{
+    const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
+    const ocEl=document.getElementById('oc-'+vk);
+    const okEl=document.getElementById('ok-'+vk);
+    if(ocEl||okEl){
+      const oc=ocEl&&ocEl.value!==''?parseInt(ocEl.value):OBJ[v]?.objectif_commandes??20;
+      const ok=okEl&&okEl.value!==''?parseInt(okEl.value):OBJ[v]?.objectif_contacts??50;
+      OBJ[v]={objectif_commandes:isNaN(oc)?0:oc, objectif_contacts:isNaN(ok)?0:ok};
+    }
+  });
+  // Mise à jour visuelle immédiate
+  renderAll();
+  toast('Objectifs mis à jour ✓');
+  // Sync Supabase arrière-plan
+  let dbOk=true;
+  for(const v of VS){
+    const res=await db.from('objectifs').upsert(
+      {vendeur:v,objectif_commandes:OBJ[v].objectif_commandes,objectif_contacts:OBJ[v].objectif_contacts},
+      {onConflict:'vendeur'}
+    );
+    if(res.error){console.warn('Supabase objectifs:',res.error.message);dbOk=false;}
+  }
+  if(!dbOk) toast('Sauvegardé localement. Lancez le SQL Supabase pour la persistance.');
+}
+
+async function saveCfg(){
+  if(role!=='directeur'){toast('Réservé au directeur');return}
+  const newNames=[];
+  for(let i=0;i<VS.length;i++){
+    const el=document.getElementById('vn-'+(i+1));
+    const nm=el?el.value.trim():'';
+    newNames.push(nm||VS[i]);
+  }
+  // Mise à jour locale immédiate
+  const oldVS=[...VS];
+  VS=newNames;
+  // Migrer les données S[] vers nouveaux noms
+  const newS={};const newOBJ={};
+  oldVS.forEach((old,i)=>{
+    const nv=newNames[i];
+    newS[nv]=S[old]||{contacts:[],affaires:[],memo:[],counter:0};
+    if(newS[nv].contacts) newS[nv].contacts.forEach(c=>{c.vendeur=nv});
+    if(newS[nv].affaires) newS[nv].affaires.forEach(a=>{a.vendeur=nv});
+    if(newS[nv].memo) newS[nv].memo.forEach(m=>{m.vendeur=nv});
+    newOBJ[nv]=OBJ[old]||{objectif_commandes:20,objectif_contacts:50};
+  });
+  S=newS;OBJ=newOBJ;
+  pg=VS[0];
+  renderAll();
+  toast('Noms enregistrés ✓');
+  // Sync Supabase arrière-plan
+  let dbOk=true;
+  for(let i=0;i<newNames.length;i++){
+    const res=await db.from('vendeurs_config').upsert({slot:i+1,nom:newNames[i]},{onConflict:'slot'});
+    if(res.error){console.warn('vendeurs_config:',res.error.message);dbOk=false;}
+  }
+  if(!dbOk) toast('Noms sauvegardés localement. Lancez le SQL pour la persistance.');
+}
+
+function showReset(){
+  const b=document.getElementById('reset-box');
+  b.style.display=b.style.display==='none'?'block':'none';
+}
+
+async function sendReset(){
+  const login=document.getElementById('rst-login').value.trim().toLowerCase();
+  const pass=document.getElementById('rst-pass').value.trim();
+  if(!login||!pass){alert('Identifiant et nouveau mot de passe requis.');return}
+  if(pass.length<4){alert('Mot de passe trop court (4 caractères minimum).');return}
+  // Vérifier que le login existe — d'abord BUILTIN, puis Supabase
+  const existsLocal=!!BUILTIN[login];
+  let existsDB=false;
+  try{
+    const{data,error}=await db.from('utilisateurs').select('id').eq('login',login).limit(1);
+    if(!error&&data&&data.length>0) existsDB=true;
+  }catch(e){ console.warn('Supabase check:',e); }
+  if(!existsLocal&&!existsDB){
+    alert('Identifiant introuvable. Vérifiez votre saisie ou contactez votre administrateur.');return;
+  }
+  // Enregistrer la demande
+  try{
+    await db.from('reset_demandes').insert({login,nouveau_mdp:pass,statut:'en_attente'});
+  }catch(e){ console.warn('Demande stockée localement uniquement'); }
+  document.getElementById('rst-ok').style.display='block';
+  setTimeout(()=>{document.getElementById('rst-ok').style.display='none';document.getElementById('reset-box').style.display='none';},4000);
+}
+
+// ── PAGE MOT DE PASSE (directeur) ──
+function rPwd(){
+  if(role!=='directeur')return locked('Accès réservé au Directeur');
+  return`<div class="sec">
+    <div class="sec-h dir"><div class="sec-title"><div class="sic">🔑</div>Gestion des mots de passe</div></div>
+    <div style="padding:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Modifier un mot de passe</div>
+          <div class="cfg-fields" style="gap:10px">
+            <div class="cfg-f"><div class="cfg-l">Identifiant</div>
+              <select class="cfg-i" id="pwd-login" style="font-family:'DM Sans',sans-serif">
+                ${Object.keys(BUILTIN).map(k=>`<option value="${k}">${k}</option>`).join('')}
+              </select>
+            </div>
+            <div class="cfg-f"><div class="cfg-l">Nouveau mot de passe</div><input type="text" class="cfg-i" id="pwd-new" placeholder="Nouveau mot de passe"></div>
+            <button class="btn-ok" onclick="changePwd()" style="margin-top:4px;width:100%">Valider le changement</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Demandes de réinitialisation</div>
+          <div id="reset-list">
+            <div style="color:var(--text3);font-size:13px">Chargement...</div>
+          </div>
+          <button onclick="loadResets()" style="margin-top:10px;background:none;border:1px solid var(--border2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif">Actualiser</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function changePwd(){
+  const login=document.getElementById('pwd-login')?.value;
+  const pass=document.getElementById('pwd-new')?.value.trim();
+  if(!login||!pass){toast('Identifiant et mot de passe requis');return}
+  if(pass.length<4){toast('Mot de passe trop court (4 caractères min.)');return}
+  // Update BUILTIN local
+  if(BUILTIN[login]) BUILTIN[login].pass=pass;
+  // Update Supabase
+  const{error}=await db.from('utilisateurs').update({mot_de_passe:pass}).eq('login',login);
+  if(error) toast('⚠️ Erreur Supabase — changement local uniquement');
+  else toast(`Mot de passe de "${login}" modifié ✓`);
+  document.getElementById('pwd-new').value='';
+}
+
+async function loadResets(){
+  const el=document.getElementById('reset-list');
+  if(!el)return;
+  try{
+    const{data,error}=await db.from('reset_demandes').select('*').eq('statut','en_attente').order('created_at',{ascending:false});
+    if(error||!data||data.length===0){
+      el.innerHTML='<div style="color:var(--text3);font-size:13px">Aucune demande en attente</div>';return;
+    }
+    el.innerHTML=data.map(d=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:6px;margin-bottom:6px;border:1px solid var(--border)">
+        <div>
+          <div style="font-weight:500;font-size:13px">${d.login}</div>
+          <div style="font-size:11px;color:var(--text3)">Nouveau mdp : <code style="background:#f0f4ff;padding:1px 5px;border-radius:3px">${d.nouveau_mdp}</code></div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="validerReset(${d.id},'${d.login}','${d.nouveau_mdp}')" style="background:#dcfce7;color:#15803d;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Valider</button>
+          <button onclick="refuserReset(${d.id})" style="background:var(--red2);color:#b91c1c;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Refuser</button>
+        </div>
+      </div>`).join('');
+  }catch(e){el.innerHTML='<div style="color:var(--text3);font-size:12px">Table reset_demandes manquante — lancez le SQL Supabase</div>'}
+}
+
+async function validerReset(id,login,pass){
+  if(BUILTIN[login])BUILTIN[login].pass=pass;
+  await db.from('utilisateurs').update({mot_de_passe:pass}).eq('login',login).catch(()=>{});
+  await db.from('reset_demandes').update({statut:'validé'}).eq('id',id).catch(()=>{});
+  toast(`Mot de passe de "${login}" mis à jour ✓`);
+  loadResets();
+}
+
+async function refuserReset(id){
+  await db.from('reset_demandes').update({statut:'refusé'}).eq('id',id).catch(()=>{});
+  toast('Demande refusée');
+  loadResets();
+}
+
+// ══ LEADS FUNCTIONS ══
+
+function buildLeadsBlock(v, vk, mois){
+  var lot1 = (leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot1) ? leadsData[v][mois].lot1 : {injectes:0,traites:0,maj_par:null,maj_at:null};
+  var lot2 = (leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot2) ? leadsData[v][mois].lot2 : {injectes:0,traites:0,maj_par:null,maj_at:null};
+  var isChef = canAdmin();
+
+  var l1pct = lot1.injectes>0 ? Math.min(100,Math.round(lot1.traites/lot1.injectes*100)) : 0;
+  var l1rest = Math.max(0, lot1.injectes-lot1.traites);
+  var l2pct = lot2.injectes>0 ? Math.min(100,Math.round(lot2.traites/lot2.injectes*100)) : 0;
+  var l2rest = Math.max(0, lot2.injectes-lot2.traites);
+  var totalInj = lot1.injectes+lot2.injectes;
+  var totalTr  = lot1.traites+lot2.traites;
+  var totalPct = totalInj>0 ? Math.min(100,Math.round(totalTr/totalInj*100)) : 0;
+  var ac = totalPct<30 ? '#b91c1c' : totalPct<60 ? '#c2410c' : '#15803d';
+
+  function rc(n){ return n===0?'ok':n<=3?'warn':'danger'; }
+  function majStr(at,par){
+    if(!at||!par) return '';
+    var d=new Date(at);
+    return '<div class="leads-maj"><strong>'+par+'</strong><br>'+d.toLocaleDateString('fr-FR')+' a '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+'</div>';
+  }
+  function oneLot(num,lot,pct,rest,col){
+    var titre = num===1 ? '&#128203; Lot 1 &mdash; Leads initiaux' : '&#43; Lot 2 &mdash; Leads suppl.';
+    var injHtml = isChef
+      ? '<input type="number" class="leads-chef-input" id="linj'+num+'-'+vk+'" value="'+lot.injectes+'" min="0" style="width:52px">'
+      : '<span style="font-size:20px;font-weight:700;font-family:DM Mono,monospace;color:var(--text2)">'+lot.injectes+'</span>';
+    var injBtn = isChef
+      ? '<button onclick="saveLeadInj(\''+v+'\','+num+',\''+vk+'\')" style="margin-top:8px;width:100%;padding:5px;background:'+col+';color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">&#128137; Injecter lot '+num+'</button>'
+      : '';
+    return '<div class="leads-lot lot'+num+'">'
+      +'<div class="leads-lot-title">'+titre+'</div>'
+      +'<div class="leads-numbers">'
+      +'<div class="leads-num-block">'+injHtml+'<div class="leads-num-lbl">Inject&eacute;s</div></div>'
+      +'<div class="leads-sep"></div>'
+      +'<div class="leads-num-block"><div class="leads-num treated">'+lot.traites+'</div><div class="leads-num-lbl">Trait&eacute;s</div></div>'
+      +'<div class="leads-sep"></div>'
+      +'<div class="leads-num-block"><div class="leads-num remaining '+rc(rest)+'">'+rest+'</div><div class="leads-num-lbl">Restants</div></div>'
+      +'</div>'
+      +'<div class="leads-progress"><div class="leads-progress-fill" style="width:'+pct+'%"></div></div>'
+      +'<div class="leads-pct">'+pct+'% trait&eacute;s</div>'
+      +'<div class="leads-input-row">'
+      +'<span style="font-size:11px;color:var(--text3);white-space:nowrap">Trait&eacute;s:</span>'
+      +'<input type="number" class="leads-input" id="ltr'+num+'-'+vk+'" value="'+lot.traites+'" min="0" max="'+(lot.injectes||999)+'">'
+      +'<button class="leads-btn-ok" onclick="saveLead(\''+v+'\','+num+',\''+vk+'\')">&#10003;</button>'
+      +majStr(lot.maj_at,lot.maj_par)
+      +'</div>'
+      +injBtn
+      +'</div>';
+  }
+
+  return '<div class="sec" style="border:2px solid '+ac+';box-shadow:0 0 0 3px '+ac+'22;margin-bottom:14px">'
+    +'<div style="background:'+ac+';padding:10px 18px;display:flex;align-items:center;justify-content:space-between">'
+    +'<div style="font-size:13px;font-weight:600;color:#fff">&#127919; TRAITEMENT LEADS &mdash; '+mois+'</div>'
+    +'<div style="display:flex;gap:12px">'
+    +'<div style="text-align:right"><div style="font-size:20px;font-weight:700;color:#fff;font-family:DM Mono,monospace">'+totalPct+'%</div><div style="font-size:9px;color:rgba(255,255,255,.7)">avancement</div></div>'
+    +'<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:#fff;font-family:DM Mono,monospace">'+totalTr+'/'+totalInj+'</div><div style="font-size:9px;color:rgba(255,255,255,.7)">trait&eacute;s/inject&eacute;s</div></div>'
+    +'</div></div>'
+    +'<div class="leads-wrap">'
+    +oneLot(1,lot1,l1pct,l1rest,'var(--navy2)')
+    +oneLot(2,lot2,l2pct,l2rest,'var(--orange)')
+    +'</div></div>';
+}
+
+async function saveLead(v,lot,vk){
+  var input=document.getElementById('ltr'+lot+'-'+vk);
+  if(!input)return;
+  var traites=parseInt(input.value)||0;
+  var mois=new Date().toISOString().slice(0,7);
+  var majPar=userVendeurNom||userLogin;
+  var majAt=new Date().toISOString();
+  if(!leadsData[v])leadsData[v]={};
+  if(!leadsData[v][mois])leadsData[v][mois]={};
+  if(!leadsData[v][mois]['lot'+lot])leadsData[v][mois]['lot'+lot]={injectes:0,traites:0,maj_par:null,maj_at:null};
+  leadsData[v][mois]['lot'+lot].traites=traites;
+  leadsData[v][mois]['lot'+lot].maj_par=majPar;
+  leadsData[v][mois]['lot'+lot].maj_at=majAt;
+  renderAll();
+  try{
+    var injectes=leadsData[v][mois]['lot'+lot].injectes||0;
+    var ex=await db.from('leads').select('id').eq('vendeur',v).eq('mois',mois).eq('lot',lot).limit(1);
+    if(ex.data&&ex.data.length>0){
+      await db.from('leads').update({traites:traites,maj_par:majPar,maj_at:majAt}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);
+    } else {
+      await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:majPar,maj_at:majAt});
+    }
+    toast('Traitement mis a jour');
+  }catch(e){console.error('saveLead:',e.message||e);toast('Erreur sauvegarde');}
+}
+
+async function saveLeadInj(v,lot,vk){
+  if(!canAdmin()){toast('Reserve au chef');return;}
+  var input=document.getElementById('linj'+lot+'-'+vk);
+  if(!input)return;
+  var injectes=parseInt(input.value)||0;
+  var mois=new Date().toISOString().slice(0,7);
+  if(!leadsData[v])leadsData[v]={};
+  if(!leadsData[v][mois])leadsData[v][mois]={};
+  if(!leadsData[v][mois]['lot'+lot])leadsData[v][mois]['lot'+lot]={injectes:0,traites:0,maj_par:null,maj_at:null};
+  leadsData[v][mois]['lot'+lot].injectes=injectes;
+  renderAll();
+  try{
+    var traites=leadsData[v][mois]['lot'+lot].traites||0;
+    var ex=await db.from('leads').select('id').eq('vendeur',v).eq('mois',mois).eq('lot',lot).limit(1);
+    if(ex.data&&ex.data.length>0){
+      await db.from('leads').update({injectes:injectes}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);
+    } else {
+      await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:null,maj_at:null});
+    }
+    toast('Leads injectes: '+injectes);
+  }catch(e){console.error('saveLeadInj:',e.message||e);toast('Erreur injection');}
+}
+
+function rLeadsRecap(){
+  if(!canAdmin())return locked('Reserve au Chef ou Directeur');
+  var mois=new Date().toISOString().slice(0,7);
+  var rows='';
+  VS.forEach(function(v){
+    var lot1=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot1)||{injectes:0,traites:0,maj_par:null,maj_at:null};
+    var lot2=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot2)||{injectes:0,traites:0,maj_par:null,maj_at:null};
+    var vk=v.replace(/[^a-zA-Z0-9]/g,'_');
+    var l1pct=lot1.injectes>0?Math.min(100,Math.round(lot1.traites/lot1.injectes*100)):0;
+    var l2pct=lot2.injectes>0?Math.min(100,Math.round(lot2.traites/lot2.injectes*100)):0;
+    var totalInj=lot1.injectes+lot2.injectes;
+    var totalTr=lot1.traites+lot2.traites;
+    var totalPct=totalInj>0?Math.min(100,Math.round(totalTr/totalInj*100)):0;
+    var ac=totalPct<30?'#fecaca':totalPct<60?'#fed7aa':'#bbf7d0';
+    var tc=totalPct<30?'#b91c1c':totalPct<60?'#c2410c':'#15803d';
+    var majStr='&mdash;';
+    if(lot1.maj_par){
+      var d=new Date(lot1.maj_at);
+      majStr='<strong>'+lot1.maj_par+'</strong><br>'+d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    }
+    rows+='<tr>'
+      +'<td style="text-align:left;font-weight:600"><div style="display:flex;align-items:center;gap:8px"><div class="av" style="width:24px;height:24px;font-size:9px">'+ini(v)+'</div>'+v+'</div></td>'
+      +'<td><input type="number" class="leads-chef-input" id="rl1inj-'+vk+'" value="'+lot1.injectes+'" min="0" style="width:48px"><button onclick="saveRecapInj(\''+v+'\',1,\'rl1inj-'+vk+'\')" style="padding:3px 7px;background:var(--navy2);color:#fff;border:none;border-radius:4px;font-size:10px;cursor:pointer;margin-left:4px">OK</button></td>'
+      +'<td><div>'+lot1.traites+'</div><div class="leads-recap-pct-bar"><div class="leads-recap-pct-fill fill-lot1" style="width:'+l1pct+'%"></div></div><div style="font-size:9px;color:var(--navy2)">'+l1pct+'%</div></td>'
+      +'<td><input type="number" class="leads-chef-input" id="rl2inj-'+vk+'" value="'+lot2.injectes+'" min="0" style="width:48px;border-color:var(--orange);background:#fff7ed"><button onclick="saveRecapInj(\''+v+'\',2,\'rl2inj-'+vk+'\')" style="padding:3px 7px;background:var(--orange);color:#fff;border:none;border-radius:4px;font-size:10px;cursor:pointer;margin-left:4px">OK</button></td>'
+      +'<td><div>'+lot2.traites+'</div><div class="leads-recap-pct-bar"><div class="leads-recap-pct-fill fill-lot2" style="width:'+l2pct+'%"></div></div><div style="font-size:9px;color:var(--orange)">'+l2pct+'%</div></td>'
+      +'<td style="background:'+ac+'"><div style="font-size:16px;font-weight:700;font-family:DM Mono,monospace;color:'+tc+'">'+totalPct+'%</div><div style="font-size:10px;color:'+tc+'">'+totalTr+'/'+totalInj+'</div></td>'
+      +'<td style="font-size:11px;color:var(--text3)">'+majStr+'</td>'
+      +'</tr>';
+  });
+  return '<div class="sec"><div class="sec-h" style="background:linear-gradient(135deg,var(--navy),#1e3a8a)">'
+    +'<div class="sec-title"><div class="sic">L</div>Recap Leads &mdash; '+mois+'</div></div>'
+    +'<div class="leads-recap"><table class="leads-recap-table"><thead><tr>'
+    +'<th class="th-left">Vendeur</th><th>Lot 1 inject&eacute;s</th><th>Lot 1 trait&eacute;s</th>'
+    +'<th>Lot 2 inject&eacute;s</th><th>Lot 2 trait&eacute;s</th><th>Avancement</th><th>Derni&egrave;re MAJ</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+
+async function saveRecapInj(v,lot,inputId){
+  if(!canAdmin())return;
+  var el=document.getElementById(inputId);
+  if(!el)return;
+  var injectes=parseInt(el.value)||0;
+  var mois=new Date().toISOString().slice(0,7);
+  if(!leadsData[v])leadsData[v]={};
+  if(!leadsData[v][mois])leadsData[v][mois]={};
+  if(!leadsData[v][mois]['lot'+lot])leadsData[v][mois]['lot'+lot]={injectes:0,traites:0,maj_par:null,maj_at:null};
+  leadsData[v][mois]['lot'+lot].injectes=injectes;
+  renderAll();
+  try{
+    var traites=leadsData[v][mois]['lot'+lot].traites||0;
+    var ex=await db.from('leads').select('id').eq('vendeur',v).eq('mois',mois).eq('lot',lot).limit(1);
+    if(ex.data&&ex.data.length>0){
+      await db.from('leads').update({injectes:injectes}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);
+    } else {
+      await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:null,maj_at:null});
+    }
+    toast('Lot '+lot+' : '+injectes+' leads injectes');
+  }catch(e){console.error(e);toast('Erreur');}
+}
+
+
+
+// ══ BILAN ANNUEL ══
+var MOIS_NOMS=['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
+
+function getBilanMois(){
+  var moisSet={};
+  var now=new Date();
+  for(var m=0;m<12;m++){
+    var d=new Date(now.getFullYear(),m,1);
+    var k=d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1);
+    moisSet[k]=1;
+  }
+  GM.forEach(function(m){if(m.date)moisSet[m.date.slice(0,7)]=1;});
+  Object.values(bilanDB).forEach(function(vd){
+    Object.keys(vd).forEach(function(mo){
+      // Filtrer les mois invalides - doit être YYYY-MM avec 7 chars
+      if(/^\d{4}-\d{2}$/.test(mo)) moisSet[mo]=1;
+    });
+  });
+  return Object.keys(moisSet).filter(function(m){return /^\d{4}-\d{2}$/.test(m);}).sort();
+}
+
+function getBilanData(){
+  var data={};
+  VS.forEach(function(v){
+    data[v]={};
+    if(bilanDB[v]){
+      Object.entries(bilanDB[v]).forEach(function(e){
+        // Ignorer les mois mal formatés
+        if(/^\d{4}-\d{2}$/.test(e[0])) data[v][e[0]]={re:e[1].re||0,fi:e[1].fi||0};
+      });
+    }
+  });
+  GM.forEach(function(m){
+    if(!m.date||!m.vendeur)return;
+    var mo=m.date.slice(0,7);
+    var v=m.vendeur;
+    if(!data[v])data[v]={};
+    if(!data[v][mo])data[v][mo]={re:0,fi:0};
+    data[v][mo].re++;
+    if((m.opts||[]).includes('Financement'))data[v][mo].fi++;
+  });
+  return data;
+}
+
+function rBilan(){
+  var moisList=getBilanMois();
+  var bilanData=getBilanData();
+  var annee=new Date().getFullYear();
+  var moisCourant=new Date().toISOString().slice(0,7);
+
+  var cumuls=VS.map(function(v){
+    var re=0,fi=0;
+    Object.values(bilanData[v]||{}).forEach(function(d){re+=d.re;fi+=d.fi;});
+    return{v:v,re:re,fi:fi};
+  }).sort(function(a,b){return b.re-a.re;});
+
+  var thMois=moisList.map(function(m){
+    var parts=m.split('-');
+    var nom=MOIS_NOMS[parseInt(parts[1])-1];
+    var isCur=m===moisCourant;
+    return '<th style="'+(isCur?'background:#0f4c81;box-shadow:inset 0 -3px 0 var(--gold)':'')+'">'+nom+'<br><span style="font-size:8px;opacity:.6">'+parts[0]+'</span></th>';
+  }).join('');
+
+  var rows=cumuls.map(function(cv,rankIdx){
+    var v=cv.v;
+    var rank=rankIdx+1;
+    var rankBadge=rank===1?'<span class="bilan-rank br1">1</span>':rank===2?'<span class="bilan-rank br2">2</span>':rank===3?'<span class="bilan-rank br3">3</span>':'<span style="font-size:10px;color:var(--text3);margin-left:4px">#'+rank+'</span>';
+    var cellsMois=moisList.map(function(m){
+      var d=(bilanData[v]&&bilanData[v][m])||{re:0,fi:0};
+      var isCur=m===moisCourant;
+      var bg=isCur?'background:#f0f9ff;':'';
+      var pfin=d.re>0?Math.round(d.fi/d.re*100):0;
+      if(d.re===0)return '<td style="'+bg+'"><span style="color:var(--border2);font-size:11px">&mdash;</span></td>';
+      return '<td style="'+bg+'"><div class="bilan-mois"><div class="bilan-cde">'+d.re+'</div>'+(d.fi>0?'<div class="bilan-sub fin">'+pfin+'% fin.</div>':'<div class="bilan-sub">&mdash;</div>')+'</div></td>';
+    }).join('');
+    var pfinCumul=cv.re>0?Math.round(cv.fi/cv.re*100):0;
+    return '<tr><td class="td-vendeur"><span class="av-sm">'+ini(v)+'</span> '+v+rankBadge+'</td>'+cellsMois+'<td class="bilan-cumul"><div class="bilan-mois"><div class="bilan-cde">'+cv.re+'</div>'+(cv.fi>0?'<div class="bilan-sub fin">'+pfinCumul+'% fin.</div>':'<div class="bilan-sub">&mdash;</div>')+'</div></td></tr>';
+  }).join('');
+
+  var totalMois=moisList.map(function(m){
+    var re=0,fi=0;
+    VS.forEach(function(v){var d=(bilanData[v]&&bilanData[v][m])||{re:0,fi:0};re+=d.re;fi+=d.fi;});
+    var pfin=re>0?Math.round(fi/re*100):0;
+    var isCur=m===moisCourant;
+    var bg=isCur?'background:#fffbeb;':'background:#fafbff;';
+    if(re===0)return '<td style="'+bg+'font-weight:600"><span style="color:var(--border2)">&mdash;</span></td>';
+    return '<td style="'+bg+'font-weight:700"><div class="bilan-mois"><div class="bilan-cde" style="color:var(--navy2);font-size:16px">'+re+'</div>'+(fi>0?'<div class="bilan-sub fin">'+pfin+'%</div>':'<div class="bilan-sub">&mdash;</div>')+'</div></td>';
+  }).join('');
+
+  var totalRe=0,totalFi=0;
+  cumuls.forEach(function(cv){totalRe+=cv.re;totalFi+=cv.fi;});
+  var totalPfin=totalRe>0?Math.round(totalFi/totalRe*100):0;
+
+  return '<div class="sec">'
+    +'<div class="sec-h" style="background:linear-gradient(135deg,var(--navy),#1e3a8a)">'
+    +'<div class="sec-title"><div class="sic">&#128197;</div>Bilan annuel '+annee+'</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.5)">commandes gagnees &bull; % financement par mois</div>'
+    +'</div>'
+    +'<div class="bilan-wrap"><table class="bilan-table"><thead><tr>'
+    +'<th class="th-vendeur">Vendeur</th>'+thMois+'<th class="th-cumul">Cumul '+annee+'</th>'
+    +'</tr></thead><tbody>'+rows
+    +'<tr style="background:#fffbeb;border-top:2px solid var(--gold)">'
+    +'<td class="td-vendeur" style="background:#fffbeb;color:#92400e;font-size:13px"><span style="font-size:14px;margin-right:6px">&Sigma;</span>Total equipe</td>'
+    +totalMois
+    +'<td class="bilan-cumul" style="background:#fffbeb"><div class="bilan-mois"><div class="bilan-cde" style="color:#92400e;font-size:18px">'+totalRe+'</div>'+(totalFi>0?'<div class="bilan-sub fin">'+totalPfin+'% fin.</div>':'')+'</div></td>'
+    +'</tr>'
+    +'</tbody></table></div>'
+    +'<div style="padding:10px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border);display:flex;gap:16px">'
+    +'<span>&#128309; Mois courant surligne</span>'
+    +'<span>&#128202; Chiffre = commandes gagnees</span>'
+    +'<span>&#128153; % fin. = taux financement</span>'
+    +'<span>&#129351;&#129352;&#129353; = classement annuel</span>'
+    +'</div></div>';
+}
+
+// ══ RAZ BILAN ANNUEL ══
+async function razFinDeMois(){
+  if(!canAdmin()){toast('Reserve au chef ou directeur');return;}
+  if(!confirm('RAZ Fin de mois\n\nArchive les resultats dans le Bilan Annuel\net remet les compteurs a zero.\n\nContacts actifs et affaires chaudes conserves.\n\nConfirmer ?'))return;
+  toast('Archivage en cours...');
+  var moisCourant=new Date().toISOString().slice(0,7);
+  var archive={};
+  GM.forEach(function(m){
+    if(!m.vendeur||!m.date)return;
+    var v=m.vendeur;var mo=m.date.slice(0,7);
+    if(!archive[v])archive[v]={};
+    if(!archive[v][mo])archive[v][mo]={re:0,fi:0};
+    archive[v][mo].re++;
+    if((m.opts||[]).includes('Financement'))archive[v][mo].fi++;
+  });
+  console.log('Archive:',JSON.stringify(archive));
+  Object.entries(archive).forEach(function(e){
+    var v=e[0],moisData=e[1];
+    if(!bilanDB[v])bilanDB[v]={};
+    Object.entries(moisData).forEach(function(f){
+      var mo=f[0],vals=f[1];
+      bilanDB[v][mo]={re:(bilanDB[v][mo]?bilanDB[v][mo].re:0)+vals.re,fi:(bilanDB[v][mo]?bilanDB[v][mo].fi:0)+vals.fi};
+    });
+  });
+  var errCount=0;
+  for(var v of Object.keys(archive)){
+    for(var mo of Object.keys(archive[v])){
+      var d=bilanDB[v][mo];
+      try{
+        var ins=await db.from('bilan_annuel').insert({vendeur:v,mois:mo,commandes:d.re,financements:d.fi});
+        if(ins.error){
+          var upd=await db.from('bilan_annuel').update({commandes:d.re,financements:d.fi}).eq('vendeur',v).eq('mois',mo);
+          if(upd.error){console.error('update failed:',upd.error.message);errCount++;}
+          else{bilanTableExists=true;console.log('Updated:',v,mo);}
+        } else {bilanTableExists=true;console.log('Inserted:',v,mo);}
+      }catch(e){console.error('Exception:',e.message||e);errCount++;}
+    }
+  }
+  VS.forEach(function(v){if(S[v]){S[v].counter=0;S[v].memo=[];S[v].perduAC=[];S[v].perduC=[];}});
+  GM=[];
+  renderAll();
+  for(var v of VS){
+    try{
+      var ex=await db.from('compteurs').select('id').eq('vendeur',v).limit(1);
+      if(ex.data&&ex.data.length>0)await db.from('compteurs').update({valeur:0}).eq('vendeur',v);
+      else await db.from('compteurs').insert({vendeur:v,valeur:0});
+    }catch(e){console.warn(e);}
+  }
+  try{await db.from('memo').delete().neq('id','__x__');}catch(e){}
+  renderAll();
+  toast(errCount>0?'Archive avec '+errCount+' erreur(s)':'Mois archive et remis a zero !',4000);
+}
+
+async function razAnnuel(){
+  if(!canAdmin()){toast('Reserve au chef ou directeur');return;}
+  if(!confirm('RAZ Bilan Annuel\n\nEfface TOUT le bilan annuel.\nA utiliser en debut de nouvelle annee.\n\nConfirmer ?'))return;
+  try{
+    var res=await db.from('bilan_annuel').delete().gte('id',1);
+    if(res.error){console.error(res.error);toast('Erreur: '+res.error.message);return;}
+  }catch(e){console.error(e);}
+  bilanDB={};
+  renderAll();
+  toast('Bilan annuel remis a zero',3000);
+}
+
+
+// ══ MODALE VALIDATION ══
+var _modalV=null, _modalId=null;
+
+function openModalG(v,id){
+  var a=S[v]&&S[v].affaires.find(function(x){return x.id===id;});
+  if(!a)return;
+  _modalV=v; _modalId=id;
+  document.getElementById('m-client').value=a.client||'';
+  document.getElementById('m-vehicule').value=a.vehicule||'';
+  document.getElementById('m-date').value=fmt(a.date);
+  document.getElementById('modal-valid').classList.remove('hidden');
+  setTimeout(function(){document.getElementById('m-vehicule').focus();},100);
+}
+
+function closeModal(){
+  document.getElementById('modal-valid').classList.add('hidden');
+  _modalV=null; _modalId=null;
+}
+
+async function confirmG(){
+  if(!_modalV||!_modalId)return;
+  var newVeh=document.getElementById('m-vehicule').value.trim();
+  closeModal();
+  await doG(_modalV, _modalId, newVeh);
+}
+</script>
+</body>
+</html>
