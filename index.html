@@ -1783,11 +1783,12 @@ function closeModal(){
   _modalV=null; _modalId=null;
 }
 
-async function confirmG(){
+async async function confirmG(){
   if(!_modalV||!_modalId)return;
   var newVeh=document.getElementById('m-vehicule').value.trim();
+  var v=_modalV, id=_modalId;
   closeModal();
-  await doG(_modalV, _modalId, newVeh);
+  await doG(v, id, newVeh);
 }
 </script>
 </body>
