@@ -1199,7 +1199,7 @@ async function saveCfgEquipe(equipe){
     // Mettre à jour les tableaux globaux
     if(equipe==='VN') vsVN=names.map((n,i)=>n||(vsVN[i]||''));
     if(equipe==='VO') vsVO=names.map((n,i)=>n||(vsVO[i]||''));
-    toast('✓ Vendeurs '+equipe+' enregistrés');
+    toast('✓ '+rows.length+' vendeur'+(rows.length>1?'s':'')+' '+equipe+' enregistrés');
     // Recharger les données si on est sur cette équipe
     if(equipe===currentEquipe){
       await loadVendeurNames();
@@ -1207,9 +1207,10 @@ async function saveCfgEquipe(equipe){
     }
     // Rafraîchir les badges
     await loadAllVendeurNames();
-    // Re-rendre la page cfg pour mettre à jour le tableau de qualification
+    // Recharger vsVN/vsVO depuis Supabase PUIS re-rendre la page cfg
+    await loadAllVendeurNames();
     var m=document.getElementById('main');
-    if(m&&document.getElementById('qualif-tbody')){m.innerHTML=rCfg();setTimeout(loadQualifBadges,150);}
+    if(m){m.innerHTML=rCfg();setTimeout(loadQualifBadges,150);}
   }catch(e){toast('Erreur: '+e.message);console.error(e);}
 }
 
