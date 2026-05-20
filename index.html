@@ -815,7 +815,7 @@ function renderMain(){
   else if(pg==='__cfg__'){loadAllVendeurNames().then(()=>{m.innerHTML=rCfg();});}
   else if(pg==='__bilan__'){m.innerHTML=rBilan();}
   else if(pg==='__leads__'){m.innerHTML=rLeadsRecap();}
-  else if(pg==='__pwd__'){m.innerHTML=rPwd();setTimeout(loadResets,100);}
+  else if(pg==='__pwd__'){m.innerHTML=rPwd();setTimeout(()=>{loadPwdUsers();loadResets();},100);}
   else if(VS.includes(pg))m.innerHTML=rVend(pg);
   else m.innerHTML='';
 }
@@ -1312,37 +1312,144 @@ async function sendReset(){
 
 function rPwd(){
   if(role!=='directeur')return locked('Accès réservé au Directeur');
-  return`<div class="sec"><div class="sec-h dir"><div class="sec-title"><div class="sic">🔑</div>Gestion des mots de passe</div></div>
-    <div style="padding:18px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div>
-        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Modifier un mot de passe</div>
-        <div class="cfg-fields" style="gap:10px">
-          <div class="cfg-f"><div class="cfg-l">Identifiant</div>
-            <select class="cfg-i" id="pwd-login" style="font-family:'DM Sans',sans-serif">
-              ${Object.keys(BUILTIN).map(k=>`<option value="${k}">${k}</option>`).join('')}
-            </select>
+  return`<div class="sec">
+    <div class="sec-h dir"><div class="sec-title"><div class="sic">🔑</div>Gestion des mots de passe</div></div>
+    <div style="padding:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+        <!-- Colonne gauche : tableau de tous les utilisateurs -->
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">
+            Comptes existants
           </div>
-          <div class="cfg-f"><div class="cfg-l">Nouveau mot de passe</div><input type="text" class="cfg-i" id="pwd-new" placeholder="Nouveau mot de passe"></div>
-          <button class="btn-ok" onclick="changePwd()" style="margin-top:4px;width:100%">Valider le changement</button>
+          <div id="pwd-users-list">
+            <div style="color:var(--text3);font-size:13px;padding:10px">Chargement...</div>
+          </div>
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+            <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">
+              ➕ Créer un nouveau compte
+            </div>
+            <div class="cfg-fields" style="gap:8px">
+              <div class="cfg-f">
+                <div class="cfg-l">Identifiant (login)</div>
+                <input type="text" class="cfg-i" id="new-login" placeholder="ex: baptiste.vo" style="font-family:'DM Sans',sans-serif">
+              </div>
+              <div class="cfg-f">
+                <div class="cfg-l">Mot de passe</div>
+                <input type="text" class="cfg-i" id="new-pass" placeholder="Min. 4 caractères">
+              </div>
+              <div class="cfg-f">
+                <div class="cfg-l">Rôle</div>
+                <select class="cfg-i" id="new-role" style="font-family:'DM Sans',sans-serif">
+                  <option value="vendeur">Vendeur</option>
+                  <option value="chef">Chef de groupe</option>
+                  <option value="directeur">Directeur</option>
+                </select>
+              </div>
+              <div class="cfg-f">
+                <div class="cfg-l">Nom vendeur associé (optionnel)</div>
+                <select class="cfg-i" id="new-vendeur-nom" style="font-family:'DM Sans',sans-serif">
+                  <option value="">— aucun —</option>
+                  ${[...vsVN,...vsVO].filter((v,i,a)=>v&&a.indexOf(v)===i).sort().map(v=>`<option value="${v}">${v}</option>`).join('')}
+                </select>
+              </div>
+              <div class="cfg-f">
+                <div class="cfg-l">Équipe</div>
+                <select class="cfg-i" id="new-equipe" style="font-family:'DM Sans',sans-serif">
+                  <option value="VN">VN</option>
+                  <option value="VO">VO</option>
+                </select>
+              </div>
+              <button class="btn-ok" onclick="createUser()" style="margin-top:4px;width:100%;background:#059669">
+                ✓ Créer le compte
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Colonne droite : demandes de réinit -->
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Demandes de réinitialisation</div>
+          <div id="reset-list"><div style="color:var(--text3);font-size:13px">Chargement...</div></div>
+          <button onclick="loadResets()" style="margin-top:10px;background:none;border:1px solid var(--border2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif">Actualiser</button>
         </div>
       </div>
-      <div>
-        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Demandes de réinitialisation</div>
-        <div id="reset-list"><div style="color:var(--text3);font-size:13px">Chargement...</div></div>
-        <button onclick="loadResets()" style="margin-top:10px;background:none;border:1px solid var(--border2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif">Actualiser</button>
-      </div>
-    </div></div></div>`;
+    </div>
+  </div>`;
 }
-async function changePwd(){
-  const login=document.getElementById('pwd-login')?.value;
-  const pass=document.getElementById('pwd-new')?.value.trim();
-  if(!login||!pass){toast('Identifiant et mot de passe requis');return}
-  if(pass.length<4){toast('Mot de passe trop court (4 caractères min.)');return}
+
+// Charger la liste des utilisateurs depuis Supabase
+async function loadPwdUsers(){
+  var el=document.getElementById('pwd-users-list');
+  if(!el)return;
+  try{
+    var{data,error}=await db.from('utilisateurs').select('id,login,role,vendeur_nom,equipe').order('role').order('login');
+    if(error||!data){el.innerHTML='<div style="color:red;font-size:12px">Erreur chargement</div>';return;}
+    var rows=data.map(function(u){
+      var roleLabel=u.role==='vendeur'?'Vendeur':u.role==='chef'?'Chef':'Directeur';
+      var roleColor=u.role==='directeur'?'#6d28d9':u.role==='chef'?'#9a3412':'#1d4ed8';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--border);margin-bottom:6px;background:#fff">
+        <div style="width:28px;height:28px;border-radius:50%;background:${roleColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">
+          ${u.login.slice(0,2).toUpperCase()}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13px">${u.login}</div>
+          <div style="font-size:11px;color:var(--text3)">${roleLabel}${u.vendeur_nom?' · '+u.vendeur_nom:''}${u.equipe?' · '+u.equipe:''}</div>
+        </div>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          <input type="text" id="pwd-new-${u.id}" placeholder="Nouveau mdp"
+            style="width:110px;padding:4px 8px;border-radius:5px;border:1px solid var(--border2);font-size:12px;font-family:'DM Sans',sans-serif">
+          <button onclick="changePwdById(${u.id},'${u.login}')"
+            style="padding:4px 10px;background:var(--navy2);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">
+            OK
+          </button>
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML=rows||'<div style="color:var(--text3);font-size:13px">Aucun utilisateur</div>';
+  }catch(e){el.innerHTML='<div style="color:red;font-size:12px">Erreur: '+e.message+'</div>';}
+}
+
+async function changePwdById(userId,login){
+  var el=document.getElementById('pwd-new-'+userId);
+  if(!el)return;
+  var pass=el.value.trim();
+  if(!pass){toast('Saisissez un nouveau mot de passe');return;}
+  if(pass.length<4){toast('Mot de passe trop court (4 car. min.)');return;}
   if(BUILTIN[login])BUILTIN[login].pass=pass;
-  const{error}=await db.from('utilisateurs').update({mot_de_passe:pass}).eq('login',login);
-  if(error)toast('⚠️ Erreur Supabase — changement local uniquement');
-  else toast(`Mot de passe de "${login}" modifié ✓`);
-  document.getElementById('pwd-new').value='';
+  var{error}=await db.from('utilisateurs').update({mot_de_passe:pass}).eq('id',userId);
+  if(error){toast('Erreur: '+error.message);return;}
+  toast('Mot de passe de "'+login+'" modifié ✓');
+  el.value='';
+}
+
+async function createUser(){
+  var login=document.getElementById('new-login')?.value.trim().toLowerCase();
+  var pass=document.getElementById('new-pass')?.value.trim();
+  var role=document.getElementById('new-role')?.value;
+  var vendeurNom=document.getElementById('new-vendeur-nom')?.value||null;
+  var equipe=document.getElementById('new-equipe')?.value||'VN';
+  if(!login||!pass){toast('Login et mot de passe requis');return;}
+  if(pass.length<4){toast('Mot de passe trop court');return;}
+  if(!/^[a-z0-9._-]+$/.test(login)){toast('Login : lettres minuscules, chiffres, . _ - uniquement');return;}
+  var{error}=await db.from('utilisateurs').insert({
+    login:login,
+    mot_de_passe:pass,
+    role:role,
+    vendeur_nom:vendeurNom||null,
+    equipe:equipe
+  });
+  if(error){toast('Erreur: '+error.message);return;}
+  toast('Compte "'+login+'" créé ✓');
+  // Vider les champs
+  document.getElementById('new-login').value='';
+  document.getElementById('new-pass').value='';
+  // Recharger la liste
+  await loadPwdUsers();
+}
+
+async function changePwd(){
+  // Compatibilité — plus utilisé mais gardé pour éviter erreur
 }
 async function loadResets(){
   const el=document.getElementById('reset-list');if(!el)return;
