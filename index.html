@@ -352,6 +352,130 @@ body.theme-vo .kpi.kpi-accent{background:rgba(255,255,255,.13)}
 body.theme-vo #btn-vn{background:transparent;color:rgba(255,255,255,.4);border-color:rgba(255,255,255,.2)}
 body.theme-vo #btn-vo{background:#b45309;color:#fff;border-color:#f59e0b;box-shadow:0 0 12px rgba(245,158,11,.5)}
 body.theme-vo .eq-badge{background:#b45309;color:#fff}
+
+/* ══════════════════════════════════════
+   RESPONSIVE MOBILE  (≤ 768px)
+══════════════════════════════════════ */
+@media(max-width:768px){
+
+  /* ── Brand bar ── */
+  .brand-bar{padding:0 12px;height:44px}
+  .brand{font-size:13px}
+  .user-name{display:none}
+  .user-role{display:none}
+  .user-badge{padding:4px 8px 4px 4px}
+  .btn-logout{padding:4px 8px;font-size:11px}
+
+  /* ── KPI bar : scroll horizontal ── */
+  .kpibar{padding:6px 12px 8px;position:relative;top:auto;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .kpibar.vend{position:relative}
+  .kpi-row{flex-wrap:nowrap;gap:0;min-width:max-content}
+  .kpi{padding:3px 10px;min-width:64px}
+  .kv{font-size:18px}
+  .kv.sm{font-size:14px}
+  .kpi-sub{font-size:10px}
+  .kpi-lbl{font-size:9px}
+  .kb-label{font-size:9px;margin-bottom:4px}
+  .equipe-switch{padding:0 8px}
+  .eq-btn{padding:4px 10px;font-size:11px}
+
+  /* ── Layout : sidebar cachée, menu hamburger ── */
+  .layout{flex-direction:column}
+  .sidebar{
+    width:100%;min-width:0;max-height:none;
+    position:fixed;top:44px;left:0;right:0;bottom:0;
+    z-index:500;transform:translateX(-100%);
+    transition:transform .25s ease;
+    overflow-y:auto;
+    box-shadow:4px 0 20px rgba(0,0,0,.2);
+  }
+  .sidebar.open{transform:translateX(0)}
+  .main{padding:12px;gap:10px}
+
+  /* ── Bouton hamburger ── */
+  #mob-menu-btn{
+    display:flex;align-items:center;justify-content:center;
+    width:32px;height:32px;border-radius:6px;
+    background:rgba(255,255,255,.12);border:none;cursor:pointer;
+    margin-right:4px;flex-shrink:0;
+  }
+  #mob-menu-btn span{
+    display:block;width:16px;height:2px;background:#fff;
+    position:relative;transition:all .2s;
+  }
+  #mob-menu-btn span::before,#mob-menu-btn span::after{
+    content:'';position:absolute;left:0;width:16px;height:2px;background:#fff;transition:all .2s;
+  }
+  #mob-menu-btn span::before{top:-5px}
+  #mob-menu-btn span::after{top:5px}
+  #mob-menu-btn.open span{background:transparent}
+  #mob-menu-btn.open span::before{transform:rotate(45deg);top:0}
+  #mob-menu-btn.open span::after{transform:rotate(-45deg);top:0}
+
+  /* ── Overlay sidebar ── */
+  #mob-overlay{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+    z-index:499;
+  }
+  #mob-overlay.show{display:block}
+
+  /* ── Sections ── */
+  .sec{border-radius:8px}
+  .sec-h{padding:10px 14px}
+  .sec-title{font-size:12px}
+
+  /* ── Input row : empilé ── */
+  .inp-row{
+    grid-template-columns:1fr;
+    gap:8px;padding:10px 12px;
+  }
+
+  /* ── Tables : scroll horizontal ── */
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{font-size:12px;min-width:480px}
+  th{padding:6px 10px;font-size:8px}
+  td{padding:7px 10px}
+
+  /* ── Grilles config : 1 colonne ── */
+  .cfg-grid{grid-template-columns:1fr;padding:10px}
+  .rk-grid{padding:10px;gap:8px}
+
+  /* ── Ranking : compact ── */
+  .rk-row{padding:10px 12px;gap:8px;flex-wrap:wrap}
+  .rk-info{width:auto;flex:1}
+  .rk-bar-w{width:100%;order:4;min-width:0}
+  .rk-val{order:3}
+
+  /* ── Leads : empilé ── */
+  .leads-wrap{grid-template-columns:1fr;padding:10px}
+
+  /* ── Modal : plein écran ── */
+  .modal-card{width:calc(100vw - 24px);padding:20px 16px;margin:0 12px}
+
+  /* ── Mk row stats ── */
+  .mk-row{grid-template-columns:repeat(4,1fr);padding:10px 12px}
+
+  /* ── Bilan annuel ── */
+  .bilan-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+  /* ── Btn save full width ── */
+  .btn-sv{width:calc(100% - 24px);margin:0 12px 12px}
+
+  /* ── Toast ── */
+  .toast{left:12px;right:12px;bottom:12px;text-align:center}
+
+  /* ── Page mots de passe : empilé ── */
+  #rPwd-grid{grid-template-columns:1fr !important}
+}
+
+@media(max-width:480px){
+  .kv{font-size:16px}
+  .brand{font-size:12px}
+  .cfg-grid{padding:8px}
+  .main{padding:8px;gap:8px}
+  .sec-h{padding:8px 12px}
+  .mk-row{grid-template-columns:repeat(3,1fr)}
+}
 </style>
 </head>
 <body>
@@ -398,6 +522,9 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
 <div id="app" style="display:none;flex-direction:column;flex:1">
 
   <div class="brand-bar">
+    <button id="mob-menu-btn" onclick="toggleSidebar()" style="display:none">
+      <span></span>
+    </button>
     <div class="brand"><div class="brand-dot"></div>Suivi Commercial 2026</div>
     <div class="topbar-right">
       <div class="user-badge">
@@ -411,6 +538,7 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
     </div>
   </div>
 
+  <div id="mob-overlay" onclick="closeSidebar()"></div>
   <div class="kpibar" id="kb-team">
     <div class="kb-label" id="kb-label-team">Tableau de bord équipe — VN</div>
     <div class="kpi-row">
@@ -604,6 +732,7 @@ async function startApp(){
   $('login-wrap').classList.add('hidden');
   $('app').style.display='flex';
   await loadData();
+  setTimeout(initMobile,100);
 }
 
 function doLogout(){
@@ -1675,6 +1804,55 @@ async function switchEquipe(eq){
   if(VS.length>0)pg=VS[0];
   renderAll();
 }
+
+// ── MOBILE : sidebar hamburger ──
+function initMobile(){
+  var btn=document.getElementById('mob-menu-btn');
+  if(!btn)return;
+  // Afficher bouton hamburger seulement sur mobile
+  if(window.innerWidth<=768){
+    btn.style.display='flex';
+  }
+  window.addEventListener('resize',function(){
+    btn.style.display=window.innerWidth<=768?'flex':'none';
+    if(window.innerWidth>768)closeSidebar();
+  });
+}
+
+function toggleSidebar(){
+  var sb=document.getElementById('sidebar');
+  var btn=document.getElementById('mob-menu-btn');
+  var ov=document.getElementById('mob-overlay');
+  if(!sb)return;
+  var isOpen=sb.classList.contains('open');
+  if(isOpen){closeSidebar();}
+  else{
+    sb.classList.add('open');
+    if(btn)btn.classList.add('open');
+    if(ov)ov.classList.add('show');
+    document.body.style.overflow='hidden';
+  }
+}
+
+function closeSidebar(){
+  var sb=document.getElementById('sidebar');
+  var btn=document.getElementById('mob-menu-btn');
+  var ov=document.getElementById('mob-overlay');
+  if(sb)sb.classList.remove('open');
+  if(btn)btn.classList.remove('open');
+  if(ov)ov.classList.remove('show');
+  document.body.style.overflow='';
+}
+
+// Fermer sidebar quand on clique un item
+var _origGoPage=goPage;
+goPage=function(p){
+  closeSidebar();
+  _origGoPage(p);
+};
+
+// Init au chargement
+document.addEventListener('DOMContentLoaded',initMobile);
 </script>
 </body>
 </html>
