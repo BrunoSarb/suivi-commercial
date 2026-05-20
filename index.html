@@ -511,6 +511,23 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
       <label class="modal-label">Date</label>
       <input type="text" class="modal-input readonly" id="m-date" readonly>
     </div>
+    <!-- Champ service affiché uniquement pour les vendeurs VN+VO -->
+    <div class="modal-field" id="m-service-field" style="display:none">
+      <label class="modal-label">⚡ Cette vente est pour quel service ?</label>
+      <div style="display:flex;gap:10px;margin-top:6px">
+        <button id="m-srv-vn" onclick="selectModalService('VN')"
+          style="flex:1;padding:10px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #3b82f6;background:#eff6ff;color:#1d4ed8;transition:all .15s">
+          🔵 VN — Neuf
+        </button>
+        <button id="m-srv-vo" onclick="selectModalService('VO')"
+          style="flex:1;padding:10px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #f59e0b;background:#fff7ed;color:#b45309;transition:all .15s">
+          🟠 VO — Occasion
+        </button>
+      </div>
+      <div id="m-srv-selected" style="margin-top:8px;font-size:12px;color:var(--text3);text-align:center">
+        Sélectionnez le service pour cette commande
+      </div>
+    </div>
     <div class="modal-btns">
       <button class="modal-btn-cancel" onclick="closeModal()">Annuler</button>
       <button class="modal-btn-confirm" onclick="confirmG()">✓ Confirmer la commande</button>
@@ -818,6 +835,33 @@ function rVend(v){
       <td><div class="acts"><button class="ba bG" onclick="openModalG('${v}','${a.id}')">G</button><button class="ba bP" onclick="doPa('${v}','${a.id}')">P</button></div></td>
     </tr>`;
   });
+  // Commandes gagnées de ce vendeur
+  const sm=[...s.memo].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  let mr='';
+  if(sm.length===0){
+    mr=`<tr class="empty-r"><td colspan="5" style="text-align:center;padding:20px;color:var(--text3)">Aucune commande gagnée ce mois — les commandes validées apparaîtront ici</td></tr>`;
+  } else {
+    sm.forEach(m=>{
+      const opts=(m.opts||[]).join(', ')||'—';
+      const hasStock=(m.opts||[]).includes('Cde Stock');
+      const hasFin=(m.opts||[]).includes('Financement');
+      const eqBadge=m.equipe&&m.equipe!==currentEquipe?
+        `<span style="margin-left:6px;font-size:9px;background:${m.equipe==='VN'?'#eff6ff;color:#1d4ed8':'#fff7ed;color:#b45309'};padding:2px 6px;border-radius:10px;font-weight:700;border:1px solid ${m.equipe==='VN'?'#bfdbfe':'#fed7aa'}">${m.equipe}</span>`:'';
+      mr+=`<tr style="${hasStock?'background:#f5f3ff':''}">
+        <td><span class="cd">${fmt(m.date)}</span></td>
+        <td><span class="cc">${m.client}</span>${hasStock?'<span style="margin-left:6px;font-size:9px;background:#7c3aed;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600">STOCK</span>':''}${eqBadge}</td>
+        <td><span class="cv">${m.vehicule||''}</span></td>
+        <td style="color:var(--text2);font-size:11px">${opts}</td>
+        <td style="text-align:center">${hasFin?'<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">✓ FIN.</span>':'—'}</td>
+      </tr>`;
+    });
+  }
+
+  // Compteurs commandes
+  const nbCdes=sm.length;
+  const nbFin=sm.filter(m=>(m.opts||[]).includes('Financement')).length;
+  const pctFin=nbCdes>0?Math.round(nbFin/nbCdes*100):0;
+
   var leadsHtml=buildLeadsBlock(v,vk,new Date().toISOString().slice(0,7));
   return leadsHtml+`
   <div class="sec"><div class="sec-h n1">
@@ -840,6 +884,28 @@ function rVend(v){
     <div style="font-size:11px;color:rgba(255,255,255,.4)">${sa.length} en cours</div>
   </div>
   <div class="tw"><table><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th><th>Options</th><th>Résultat</th></tr></thead><tbody>${ar}</tbody></table></div>
+  </div>
+  <!-- ══ RÉCAPITULATIF COMMANDES GAGNÉES ══ -->
+  <div class="sec">
+    <div class="sec-h gn" style="background:linear-gradient(135deg,#15803d,#059669)">
+      <div class="sec-title"><div class="sic">🏆</div>Mes commandes gagnées</div>
+      <div style="display:flex;gap:14px;align-items:center">
+        <div style="text-align:right">
+          <div style="font-size:20px;font-weight:700;color:#fff;font-family:'DM Mono',monospace">${nbCdes}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,.7)">commande${nbCdes>1?'s':''}</div>
+        </div>
+        <div style="text-align:right;border-left:1px solid rgba(255,255,255,.2);padding-left:14px">
+          <div style="font-size:20px;font-weight:700;color:#fff;font-family:'DM Mono',monospace">${pctFin}%</div>
+          <div style="font-size:9px;color:rgba(255,255,255,.7)">financement</div>
+        </div>
+      </div>
+    </div>
+    <div class="tw"><table>
+      <thead><tr>
+        <th>Date</th><th>Client</th><th>Véhicule</th><th>Options</th><th style="text-align:center">Fin.</th>
+      </tr></thead>
+      <tbody>${mr}</tbody>
+    </table></div>
   </div>`;
 }
 
@@ -1242,15 +1308,18 @@ async function doPa(v,id){
   try{await db.from('affaires').delete().eq('id',id);}catch(e){}
   toast('Affaire perdue');
 }
-async function doG(v,id,newVehicule){
+async function doG(v,id,newVehicule,serviceOverride){
   const i=S[v].affaires.findIndex(a=>a.id===id);if(i<0)return;
   const a=S[v].affaires.splice(i,1)[0];
   if(newVehicule&&newVehicule.trim())a.vehicule=newVehicule.trim();
-  a.vendeur=v;S[v].memo.push(a);GM.unshift(a);
+  // Utiliser le service sélectionné (VN ou VO) ou à défaut l'équipe courante
+  const equipeCommande=serviceOverride||currentEquipe;
+  a.vendeur=v;a.equipe=equipeCommande;
+  S[v].memo.push(a);GM.unshift(a);
   renderAll();
   try{await db.from('affaires').delete().eq('id',id);}catch(e){}
-  try{await db.from('memo').insert({id:uid(),vendeur:v,date:a.date,client:a.client,vehicule:a.vehicule||'',opts:a.opts||[],equipe:currentEquipe});}catch(e){}
-  toast('Commande gagnée ! 🏆');
+  try{await db.from('memo').insert({id:uid(),vendeur:v,date:a.date,client:a.client,vehicule:a.vehicule||'',opts:a.opts||[],equipe:equipeCommande});}catch(e){}
+  toast('Commande gagnée ! 🏆'+(serviceOverride?' ('+serviceOverride+')':''));
 }
 async function togOpt(v,id,opt){
   const a=S[v].affaires.find(a=>a.id===id);if(!a)return;
@@ -1533,18 +1602,72 @@ async function razAnnuel(){
   bilanDB={};renderAll();toast('Bilan annuel remis a zero',3000);
 }
 
-var _modalV=null,_modalId=null;
+var _modalV=null,_modalId=null,_modalService=null;
 function openModalG(v,id){
   var a=S[v]&&S[v].affaires.find(function(x){return x.id===id;});if(!a)return;
-  _modalV=v;_modalId=id;
+  _modalV=v;_modalId=id;_modalService=null;
   document.getElementById('m-client').value=a.client||'';
   document.getElementById('m-vehicule').value=a.vehicule||'';
   document.getElementById('m-date').value=fmt(a.date);
+
+  // Vérifier si ce vendeur est qualifié VN+VO
+  var isVNVO=isVendeurVNVO(v);
+  var serviceField=document.getElementById('m-service-field');
+  if(serviceField){
+    serviceField.style.display=isVNVO?'block':'none';
+    // Reset sélection
+    document.getElementById('m-srv-selected').textContent='Sélectionnez le service pour cette commande';
+    document.getElementById('m-srv-vn').style.boxShadow='';
+    document.getElementById('m-srv-vo').style.boxShadow='';
+    document.getElementById('m-srv-vn').style.opacity='1';
+    document.getElementById('m-srv-vo').style.opacity='1';
+  }
+  // Si pas VN+VO, on utilise directement currentEquipe
+  if(!isVNVO) _modalService=currentEquipe;
+
   document.getElementById('modal-valid').classList.remove('hidden');
   setTimeout(function(){document.getElementById('m-vehicule').focus();},100);
 }
+
+// Sélectionner le service dans la modale
+function selectModalService(service){
+  _modalService=service;
+  var btnVN=document.getElementById('m-srv-vn');
+  var btnVO=document.getElementById('m-srv-vo');
+  var lbl=document.getElementById('m-srv-selected');
+  if(service==='VN'){
+    btnVN.style.boxShadow='0 0 0 3px rgba(59,130,246,.5)';btnVN.style.opacity='1';
+    btnVO.style.boxShadow='';btnVO.style.opacity='0.4';
+    if(lbl)lbl.textContent='✓ Vente comptabilisée en VN — Neuf';
+    if(lbl)lbl.style.color='#1d4ed8';
+  } else {
+    btnVO.style.boxShadow='0 0 0 3px rgba(245,158,11,.5)';btnVO.style.opacity='1';
+    btnVN.style.boxShadow='';btnVN.style.opacity='0.4';
+    if(lbl)lbl.textContent='✓ Vente comptabilisée en VO — Occasion';
+    if(lbl)lbl.style.color='#b45309';
+  }
+}
+
+// Vérifier si un vendeur est qualifié dans les deux équipes
+function isVendeurVNVO(nom){
+  var inVN=vsVN.includes(nom);
+  var inVO=vsVO.includes(nom);
+  return inVN&&inVO;
+}
 function closeModal(){document.getElementById('modal-valid').classList.add('hidden');_modalV=null;_modalId=null;}
-async function confirmG(){if(!_modalV||!_modalId)return;var newVeh=document.getElementById('m-vehicule').value.trim();var v=_modalV,id=_modalId;closeModal();await doG(v,id,newVeh);}
+async function confirmG(){
+  if(!_modalV||!_modalId)return;
+  // Si vendeur VN+VO, exiger un service sélectionné
+  if(isVendeurVNVO(_modalV)&&!_modalService){
+    document.getElementById('m-srv-selected').textContent='⚠️ Veuillez choisir VN ou VO avant de confirmer';
+    document.getElementById('m-srv-selected').style.color='#ef4444';
+    return;
+  }
+  var newVeh=document.getElementById('m-vehicule').value.trim();
+  var v=_modalV,id=_modalId,svc=_modalService||currentEquipe;
+  closeModal();
+  await doG(v,id,newVeh,svc);
+}
 
 async function switchEquipe(eq){
   if(eq===currentEquipe)return;
