@@ -511,23 +511,7 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
       <label class="modal-label">Date</label>
       <input type="text" class="modal-input readonly" id="m-date" readonly>
     </div>
-    <!-- Champ service affiché uniquement pour les vendeurs VN+VO -->
-    <div class="modal-field" id="m-service-field" style="display:none">
-      <label class="modal-label">⚡ Cette vente est pour quel service ?</label>
-      <div style="display:flex;gap:10px;margin-top:6px">
-        <button id="m-srv-vn" onclick="selectModalService('VN')"
-          style="flex:1;padding:10px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #3b82f6;background:#eff6ff;color:#1d4ed8;transition:all .15s">
-          🔵 VN — Neuf
-        </button>
-        <button id="m-srv-vo" onclick="selectModalService('VO')"
-          style="flex:1;padding:10px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid #f59e0b;background:#fff7ed;color:#b45309;transition:all .15s">
-          🟠 VO — Occasion
-        </button>
-      </div>
-      <div id="m-srv-selected" style="margin-top:8px;font-size:12px;color:var(--text3);text-align:center">
-        Sélectionnez le service pour cette commande
-      </div>
-    </div>
+
     <div class="modal-btns">
       <button class="modal-btn-cancel" onclick="closeModal()">Annuler</button>
       <button class="modal-btn-confirm" onclick="confirmG()">✓ Confirmer la commande</button>
@@ -1062,7 +1046,7 @@ function rCfg(){
   vsVN.forEach(function(n){if(n&&!vus.has(n)){lignes.push({nom:n,service:'VN'});vus.add(n);}});
   vsVO.forEach(function(n){if(n&&!vus.has(n)){lignes.push({nom:n,service:'VO'});vus.add(n);}});
   // Les vendeurs dans les deux équipes
-  vsVN.forEach(function(n){if(vsVO.includes(n)&&lignes.find(l=>l.nom===n)){lignes.find(l=>l.nom===n).service='VN,VO';}});
+  // Pas de VN+VO — chaque vendeur est soit VN soit VO
   // Compléter jusqu'à 18 lignes vides
   while(lignes.length<18)lignes.push({nom:'',service:'VN'});
 
@@ -1073,9 +1057,8 @@ function rCfg(){
     var svc=l.service||'VN';
     var selVN=svc==='VN'?'selected':'';
     var selVO=svc==='VO'?'selected':'';
-    var selB=svc==='VN,VO'?'selected':'';
     var av=nom?ini(nom):'?';
-    var avBg=nom?(svc==='VO'?'#b45309':svc==='VN,VO'?'#7c3aed':'#1d4ed8'):'var(--text3)';
+    var avBg=nom?(svc==='VO'?'#b45309':'#1d4ed8'):'var(--text3)';
     rows+=`<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:8px 12px;width:36px;text-align:center">
         <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;font-weight:500">${num}</span>
@@ -1093,7 +1076,7 @@ function rCfg(){
           style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border2);font-size:13px;font-family:'DM Sans',sans-serif;background:#fff;color:var(--text)">
           <option value="VN" ${selVN}>🔵 VN — Neuf</option>
           <option value="VO" ${selVO}>🟠 VO — Occasion</option>
-          <option value="VN,VO" ${selB}>🟣 VN + VO — les deux</option>
+
         </select>
       </td>
     </tr>`;
@@ -1131,7 +1114,7 @@ function previewCfgRow(num){
   var nom=nomEl.value.trim();
   var svc=svcEl.value;
   avEl.textContent=nom?ini(nom):'?';
-  avEl.style.background=nom?(svc==='VO'?'#b45309':svc==='VN,VO'?'#7c3aed':'#1d4ed8'):'var(--text3)';
+  avEl.style.background=nom?(svc==='VO'?'#b45309':'#1d4ed8'):'var(--text3)';
   nomEl.style.background=nom?'#fff':'#fff7ed';
 }
 
@@ -1161,10 +1144,9 @@ async function saveCfgAll(){
     // Slots VO : 20+poste (ex poste 3 VO = slot 23) → garantit unicité
     var inserts=[];
     vendeurs.forEach(function(v){
-      if(v.service==='VN'||v.service==='VN,VO'){
+      if(v.service==='VN'){
         inserts.push({slot:v.poste,nom:v.nom,equipe:'VN'});
-      }
-      if(v.service==='VO'||v.service==='VN,VO'){
+      } else if(v.service==='VO'){
         inserts.push({slot:v.poste+20,nom:v.nom,equipe:'VO'});
       }
     });
@@ -1175,8 +1157,8 @@ async function saveCfgAll(){
     if(ins.error){showL(false);toast('Erreur: '+ins.error.message);console.error(ins.error);return;}
 
     // Mettre à jour vsVN et vsVO en mémoire
-    vsVN=vendeurs.filter(v=>v.service==='VN'||v.service==='VN,VO').map(v=>v.nom);
-    vsVO=vendeurs.filter(v=>v.service==='VO'||v.service==='VN,VO').map(v=>v.nom);
+    vsVN=vendeurs.filter(v=>v.service==='VN').map(v=>v.nom);
+    vsVO=vendeurs.filter(v=>v.service==='VO').map(v=>v.nom);
 
     // Mettre à jour aussi la table utilisateurs pour les vendeurs avec compte
     for(var v of vendeurs){
@@ -1554,68 +1536,20 @@ async function razAnnuel(){
 var _modalV=null,_modalId=null,_modalService=null;
 function openModalG(v,id){
   var a=S[v]&&S[v].affaires.find(function(x){return x.id===id;});if(!a)return;
-  _modalV=v;_modalId=id;_modalService=null;
+  _modalV=v;_modalId=id;_modalService=currentEquipe;
   document.getElementById('m-client').value=a.client||'';
   document.getElementById('m-vehicule').value=a.vehicule||'';
   document.getElementById('m-date').value=fmt(a.date);
-
-  // Vérifier si ce vendeur est qualifié VN+VO
-  var isVNVO=isVendeurVNVO(v);
-  var serviceField=document.getElementById('m-service-field');
-  if(serviceField){
-    serviceField.style.display=isVNVO?'block':'none';
-    // Reset sélection
-    document.getElementById('m-srv-selected').textContent='Sélectionnez le service pour cette commande';
-    document.getElementById('m-srv-vn').style.boxShadow='';
-    document.getElementById('m-srv-vo').style.boxShadow='';
-    document.getElementById('m-srv-vn').style.opacity='1';
-    document.getElementById('m-srv-vo').style.opacity='1';
-  }
-  // Si pas VN+VO, on utilise directement currentEquipe
-  if(!isVNVO) _modalService=currentEquipe;
-
   document.getElementById('modal-valid').classList.remove('hidden');
   setTimeout(function(){document.getElementById('m-vehicule').focus();},100);
-}
-
-// Sélectionner le service dans la modale
-function selectModalService(service){
-  _modalService=service;
-  var btnVN=document.getElementById('m-srv-vn');
-  var btnVO=document.getElementById('m-srv-vo');
-  var lbl=document.getElementById('m-srv-selected');
-  if(service==='VN'){
-    btnVN.style.boxShadow='0 0 0 3px rgba(59,130,246,.5)';btnVN.style.opacity='1';
-    btnVO.style.boxShadow='';btnVO.style.opacity='0.4';
-    if(lbl)lbl.textContent='✓ Vente comptabilisée en VN — Neuf';
-    if(lbl)lbl.style.color='#1d4ed8';
-  } else {
-    btnVO.style.boxShadow='0 0 0 3px rgba(245,158,11,.5)';btnVO.style.opacity='1';
-    btnVN.style.boxShadow='';btnVN.style.opacity='0.4';
-    if(lbl)lbl.textContent='✓ Vente comptabilisée en VO — Occasion';
-    if(lbl)lbl.style.color='#b45309';
-  }
-}
-
-// Vérifier si un vendeur est qualifié dans les deux équipes
-function isVendeurVNVO(nom){
-  var inVN=vsVN.includes(nom);
-  var inVO=vsVO.includes(nom);
-  return inVN&&inVO;
 }
 function closeModal(){document.getElementById('modal-valid').classList.add('hidden');_modalV=null;_modalId=null;}
 async function confirmG(){
   if(!_modalV||!_modalId)return;
-  // Si vendeur VN+VO, exiger un service sélectionné
-  if(isVendeurVNVO(_modalV)&&!_modalService){
-    document.getElementById('m-srv-selected').textContent='⚠️ Veuillez choisir VN ou VO avant de confirmer';
-    document.getElementById('m-srv-selected').style.color='#ef4444';
-    return;
-  }
   var newVeh=document.getElementById('m-vehicule').value.trim();
-  var v=_modalV,id=_modalId,svc=_modalService||currentEquipe;
+  var v=_modalV,id=_modalId;
   closeModal();
-  await doG(v,id,newVeh,svc);
+  await doG(v,id,newVeh,currentEquipe);
 }
 
 async function switchEquipe(eq){
