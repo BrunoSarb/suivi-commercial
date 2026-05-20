@@ -650,7 +650,7 @@ async function loadVendeurNames(){
         var idx=(r.slot-slotMin);
         if(idx>=0&&idx<9)arr[idx]=r.nom||'';
       });
-      VS=arr.filter(n=>n); // enlever les vides
+      VS=arr.filter(n=>n&&!/^Poste\s+\d+$/i.test(n)); // enlever les vides et noms génériques
       if(VS.length===0)VS=arr.map((n,i)=>n||('Vendeur '+(i+1)));
       console.log('VS chargé pour '+currentEquipe+' (slots '+slotMin+'-'+slotMax+'):',VS);
     } else {
@@ -1043,12 +1043,12 @@ async function loadAllVendeurNames(){
     if(!error&&data){
       data.forEach(function(r){
         var slot=r.slot||1;
+        var nomVal=r.nom||'';
+        var isGeneric=/^Poste\s+\d+$/i.test(nomVal);
         if(slot>=1&&slot<=9){
-          // Slots 1-9 : vendeurs VN
-          vsVN[slot-1]=r.nom||'';
+          vsVN[slot-1]=isGeneric?'':nomVal;
         } else if(slot>=11&&slot<=19){
-          // Slots 11-19 : vendeurs VO
-          vsVO[slot-11]=r.nom||'';
+          vsVO[slot-11]=isGeneric?'':nomVal;
         }
       });
     }
@@ -1087,9 +1087,11 @@ function rCfg(){
 
   // ── Tableau de qualification ──
   // Construire depuis les deux listes fusionnées
+  // Filtrer les noms génériques "Poste X" — seuls les vrais noms apparaissent
+  function isRealName(n){return n&&!/^Poste\s+\d+$/i.test(n);}
   var allNoms={};
-  vsVN.forEach(function(n,i){if(n) allNoms[n]={slot:i+1};});
-  vsVO.forEach(function(n,i){if(n) allNoms[n]={slot:i+1};});
+  vsVN.forEach(function(n,i){if(isRealName(n)) allNoms[n]={slot:i+1};});
+  vsVO.forEach(function(n,i){if(isRealName(n)) allNoms[n]={slot:i+1};});
 
   let qualifRows='';
   Object.keys(allNoms).sort().forEach(function(nom){
@@ -1187,8 +1189,11 @@ async function saveCfgEquipe(equipe){
     var slotBase=equipe==='VO'?10:0;
     // DELETE les slots de cette équipe
     await db.from('vendeurs_config').delete().gte('slot',slotBase+1).lte('slot',slotBase+9);
+    // Ne garder que les postes avec un vrai nom (pas vide, pas "Poste X" générique)
     const rows=names
-      .map((nom,i)=>({slot:slotBase+i+1,nom:nom||('Poste '+(i+1)),equipe:equipe}));
+      .map((nom,i)=>({slot:slotBase+i+1,nom:nom,equipe:equipe}))
+      .filter(r=>r.nom && !/^Poste\s+\d+$/i.test(r.nom));
+    if(rows.length===0){toast('Aucun nom saisi — remplissez au moins un poste');return;}
     const ins=await db.from('vendeurs_config').insert(rows);
     if(ins.error){toast('Erreur: '+ins.error.message);return;}
     // Mettre à jour les tableaux globaux
