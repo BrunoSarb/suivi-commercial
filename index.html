@@ -411,6 +411,23 @@ tr:hover td{background:#fafbff}
 .modal-btn-cancel{flex:1;padding:10px;background:var(--bg);color:var(--text2);border:1px solid var(--border2);border-radius:var(--rs);font-size:14px;cursor:pointer;font-family:'DM Sans',sans-serif}
 .modal-btn-confirm{flex:2;padding:10px;background:var(--green2);color:#fff;border:none;border-radius:var(--rs);font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif}
 .modal-btn-confirm:hover{background:#047857}
+
+/* ══ SWITCH EQUIPE ══ */
+.equipe-switch{
+  display:flex;align-items:center;gap:4px;
+  margin-left:auto;padding:0 16px;flex-shrink:0;
+}
+.eq-btn{
+  padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;
+  cursor:pointer;border:2px solid rgba(255,255,255,.3);
+  background:transparent;color:rgba(255,255,255,.5);
+  font-family:'DM Sans',sans-serif;letter-spacing:.04em;
+  transition:all .15s;
+}
+.eq-btn.active-vn{background:#1d4ed8;color:#fff;border-color:#3b82f6;box-shadow:0 0 12px rgba(59,130,246,.5)}
+.eq-btn.active-vo{background:#b45309;color:#fff;border-color:#f59e0b;box-shadow:0 0 12px rgba(245,158,11,.5)}
+.eq-btn:hover{opacity:.85}
+.eq-label{font-size:9px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;margin-right:4px}
 </style>
 </head>
 <body>
@@ -472,7 +489,7 @@ tr:hover td{background:#fafbff}
 
   <!-- KPI EQUIPE -->
   <div class="kpibar" id="kb-team">
-    <div class="kb-label">Tableau de bord équipe</div>
+    <div class="kb-label" id="kb-label-team">Tableau de bord équipe — VN</div>
     <div class="kpi-row">
       <!-- BLOC 1: Leads + Contacts + AC -->
       <div class="kpi"><div class="kpi-lbl">Leads ouverts</div><div class="kv orange" id="t-lo">0</div><div class="kpi-sub">à traiter</div></div>
@@ -509,6 +526,11 @@ tr:hover td{background:#fafbff}
       <!-- BLOC 5: Taux -->
       <div class="kpi"><div class="kpi-lbl">Tx Leads</div><div class="kv sm" id="t-tl">0%</div><div class="kpi-sub">traitement</div></div>
       <div class="kpi"><div class="kpi-lbl">Tx Transfo.</div><div class="kv sm" id="t-tx">0%</div><div class="kpi-sub">contacts→cde</div></div>
+      <div class="equipe-switch">
+        <span class="eq-label">Équipe</span>
+        <button class="eq-btn active-vn" id="btn-vn" onclick="switchEquipe('VN')">VN</button>
+        <button class="eq-btn" id="btn-vo" onclick="switchEquipe('VO')">VO</button>
+      </div>
     </div>
   </div>
 
@@ -593,6 +615,7 @@ const db=createClient(SB_URL,SB_KEY);
 
 const OPTS=['Cde Stock','Financement','Gravage','Coyote','Waxoyl','A.Lease'];
 let leadsData={};
+let currentEquipe='VN'; // 'VN' ou 'VO'
 let bilanDB={};
 let bilanTableExists=false;
 
@@ -706,7 +729,7 @@ $('li-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 // ── LOAD VENDEUR NAMES ──
 async function loadVendeurNames(){
   try{
-    const{data}=await db.from('vendeurs_config').select('*').order('slot',{ascending:true});
+    const{data}=await db.from('vendeurs_config').select('*').eq('equipe',currentEquipe).order('slot',{ascending:true});
     if(data&&data.length>0){
       VS=data.map(r=>r.nom);
     }
@@ -718,11 +741,11 @@ async function loadData(){
   showL(true);
   try{
     const[cR,aR,mR,kR,oR]=await Promise.all([
-      db.from('contacts').select('*').order('date',{ascending:true}),
-      db.from('affaires').select('*').order('date',{ascending:true}),
-      db.from('memo').select('*').order('created_at',{ascending:false}),
-      db.from('compteurs').select('*'),
-      db.from('objectifs').select('*')
+      db.from('contacts').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
+      db.from('affaires').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
+      db.from('memo').select('*').eq('equipe',currentEquipe).order('created_at',{ascending:false}),
+      db.from('compteurs').select('*').eq('equipe',currentEquipe),
+      db.from('objectifs').select('*').eq('equipe',currentEquipe)
     ]);
     VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]}});GM=[];
     (cR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].contacts.push(r)});
@@ -733,7 +756,7 @@ async function loadData(){
   }catch(e){console.error(e);toast('Erreur de connexion à la base')}
   // Charger bilan annuel
   try{
-    var bR=await db.from('bilan_annuel').select('*');
+    var bR=await db.from('bilan_annuel').select('*').eq('equipe',currentEquipe);
     if(!bR.error&&bR.data){
       bilanDB={};
       bR.data.forEach(function(r){
@@ -1144,7 +1167,7 @@ async function addC(v){
   const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
   const date=$('id-'+vk)?.value,client=$('ic-'+vk)?.value.trim(),veh=$('iv-'+vk)?.value.trim();
   if(!date||!client){toast('Veuillez renseigner la date et le client');return}
-  const r={id:uid(),vendeur:v,date,client,vehicule:veh||'',opts:[]};
+  const r={id:uid(),vendeur:v,date,client,vehicule:veh||'',opts:[],equipe:currentEquipe};
   if(!S[v])S[v]={contacts:[],affaires:[],memo:[],counter:0};
   S[v].contacts.push(r);S[v].counter++;
   renderAll();
@@ -1153,8 +1176,8 @@ async function addC(v){
   (async function(){
     try{
       var ex=await db.from('compteurs').select('id').eq('vendeur',v).limit(1);
-      if(ex.data&&ex.data.length>0) await db.from('compteurs').update({valeur:S[v].counter}).eq('vendeur',v);
-      else await db.from('compteurs').insert({vendeur:v,valeur:S[v].counter});
+      if(ex.data&&ex.data.length>0) await db.from('compteurs').update({valeur:S[v].counter}).eq('vendeur',v).eq('equipe',currentEquipe);
+      else await db.from('compteurs').insert({vendeur:v,valeur:S[v].counter,equipe:currentEquipe});
     }catch(e){console.warn('ctr:',e);}
   })();
   toast('Contact ajouté ✓');
@@ -1205,7 +1228,7 @@ async function doG(v,id,newVehicule){
   // Insérer dans memo
   try{
     const newId=uid();
-    const ins=await db.from('memo').insert({id:newId,vendeur:v,date:a.date,client:a.client,vehicule:a.vehicule||'',opts:a.opts||[]});
+    const ins=await db.from('memo').insert({id:newId,vendeur:v,date:a.date,client:a.client,vehicule:a.vehicule||'',opts:a.opts||[],equipe:currentEquipe});
     if(ins.error) console.error('doG insert memo:', ins.error.message);
     else console.log('Memo inséré OK:', newId);
   }catch(e){console.error('doG insert exception:',e.message||e);}
@@ -1491,7 +1514,7 @@ async function saveLead(v,lot,vk){
     if(ex.data&&ex.data.length>0){
       await db.from('leads').update({traites:traites,maj_par:majPar,maj_at:majAt}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);
     } else {
-      await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:majPar,maj_at:majAt});
+      await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:majPar,maj_at:majAt,equipe:currentEquipe});
     }
     toast('Traitement mis a jour');
   }catch(e){console.error('saveLead:',e.message||e);toast('Erreur sauvegarde');}
@@ -1790,6 +1813,26 @@ async function confirmG(){
   closeModal();
   await doG(v, id, newVeh);
 }
+
+// ══ SWITCH EQUIPE ══
+async function switchEquipe(eq){
+  if(eq === currentEquipe) return;
+  currentEquipe = eq;
+  // Mettre à jour les boutons
+  var btnVN = document.getElementById('btn-vn');
+  var btnVO = document.getElementById('btn-vo');
+  if(btnVN && btnVO){
+    btnVN.className = 'eq-btn' + (eq==='VN' ? ' active-vn' : '');
+    btnVO.className = 'eq-btn' + (eq==='VO' ? ' active-vo' : '');
+  }
+  // Mettre à jour le label équipe dans la barre KPI
+  var label = document.getElementById('kb-label-team');
+  if(label) label.textContent = 'Tableau de bord équipe — ' + eq;
+  // Réinitialiser et recharger les données
+  pg = VS[0];
+  await loadData();
+}
+
 </script>
 </body>
 </html>
