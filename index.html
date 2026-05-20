@@ -653,17 +653,25 @@ async function loadVendeurNames(){
 async function loadData(){
   showL(true);
   try{
-    const[cR,aR,mR,kR,oR]=await Promise.all([
+    const[cR,aR,kR,oR]=await Promise.all([
       db.from('contacts').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
       db.from('affaires').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
-      db.from('memo').select('*').eq('equipe',currentEquipe).order('created_at',{ascending:false}),
       db.from('compteurs').select('*').eq('equipe',currentEquipe),
       db.from('objectifs').select('*').eq('equipe',currentEquipe)
     ]);
+    // Les mémos : charger par nom de vendeur (pas par équipe) pour inclure
+    // les commandes VN+VO d'un même vendeur quelle que soit l'équipe enregistrée
+    const mR = VS.length>0
+      ? await db.from('memo').select('*').in('vendeur',VS).order('created_at',{ascending:false})
+      : {data:[]};
     VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};});GM=[];
     (cR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].contacts.push(r)});
     (aR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].affaires.push(r)});
-    (mR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].memo.push(r);GM.push(r)});
+    (mR.data||[]).forEach(r=>{
+      if(S[r.vendeur])S[r.vendeur].memo.push(r);
+      // GM = mémos de l'équipe courante uniquement (pour stats et classement)
+      if(!r.equipe||r.equipe===currentEquipe)GM.push(r);
+    });
     (kR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].counter=r.valeur??0});
     (oR.data||[]).forEach(r=>{OBJ[r.vendeur]={objectif_commandes:r.objectif_commandes??20,objectif_contacts:r.objectif_contacts??50}});
   }catch(e){console.error(e);toast('Erreur de connexion à la base');}
@@ -698,14 +706,21 @@ function tKPI(){
   let ct=0,ac=0,ob=0,re=0,cs=0,fi=0,gr=0,co=0,wa=0,al=0;
   VS.forEach(v=>{
     if(!S[v])return;
-    ct+=S[v].counter;ac+=S[v].affaires.length;ob+=OBJ[v]?.objectif_commandes??0;re+=S[v].memo.length;
-    S[v].memo.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
+    ct+=S[v].counter;
+    ac+=S[v].affaires.length;
+    ob+=OBJ[v]?.objectif_commandes??0;
+    // Filtrer les mémos par currentEquipe pour les stats d'équipe
+    // (un vendeur VN+VO peut avoir des mémos dans les deux équipes)
+    const memoEq=S[v].memo.filter(m=>!m.equipe||m.equipe===currentEquipe);
+    re+=memoEq.length;
+    memoEq.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
   });
   return{ct,ac,ob,re,cs,fi,gr,co,wa,al};
 }
 function vKPI(v){
   const s=S[v]||{contacts:[],affaires:[],memo:[],counter:0};
   let cs=0,fi=0,gr=0,co=0,wa=0,al=0;
+  // Pour un vendeur individuel, on affiche toutes ses commandes (VN + VO)
   s.memo.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
   return{ct:s.counter,ac:s.affaires.length,ob:OBJ[v]?.objectif_commandes??0,re:s.memo.length,cs,fi,gr,co,wa,al};
 }
