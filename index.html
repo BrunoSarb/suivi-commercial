@@ -636,26 +636,21 @@ $('li-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 
 async function loadVendeurNames(){
   try{
-    // VN = slots 1-9, VO = slots 11-19
-    var slotMin=currentEquipe==='VO'?11:1;
-    var slotMax=currentEquipe==='VO'?19:9;
+    // Nouvelle convention : slots 1-18 = VN, slots 21-38 = VO
+    // (slot = numéro de poste pour VN, numéro de poste + 20 pour VO)
+    var equipeFilter=currentEquipe==='VO'?'VO':'VN';
     const{data,error}=await db.from('vendeurs_config')
       .select('*')
-      .gte('slot',slotMin).lte('slot',slotMax)
+      .eq('equipe',equipeFilter)
       .order('slot',{ascending:true});
     if(!error&&data&&data.length>0){
-      // Remettre en index 0-8
-      var arr=Array(9).fill('');
-      data.forEach(function(r){
-        var idx=(r.slot-slotMin);
-        if(idx>=0&&idx<9)arr[idx]=r.nom||'';
-      });
-      VS=arr.filter(n=>n&&!/^Poste\s+\d+$/i.test(n)); // enlever les vides et noms génériques
-      if(VS.length===0)VS=arr.map((n,i)=>n||('Vendeur '+(i+1)));
-      console.log('VS chargé pour '+currentEquipe+' (slots '+slotMin+'-'+slotMax+'):',VS);
+      VS=data
+        .map(r=>r.nom||'')
+        .filter(n=>n&&!/^Poste\s+\d+$/i.test(n));
+      console.log('VS chargé pour '+currentEquipe+':',VS);
     } else {
-      VS=['Vendeur 1','Vendeur 2','Vendeur 3','Vendeur 4','Vendeur 5','Vendeur 6','Vendeur 7','Vendeur 8','Vendeur 9'];
-      console.log('Fallback VS pour '+currentEquipe);
+      VS=[];
+      console.log('Aucun vendeur configuré pour '+currentEquipe);
     }
   }catch(e){
     console.warn('loadVendeurNames error:',e);
@@ -828,7 +823,7 @@ function renderMain(){
   else if(pg==='__rank__')m.innerHTML=rRank();
   else if(pg==='__obj__')m.innerHTML=rObj();
   else if(pg==='__raz__')m.innerHTML=rRAZ();
-  else if(pg==='__cfg__'){loadAllVendeurNames().then(()=>{m.innerHTML=rCfg();setTimeout(loadQualifBadges,150);});}
+  else if(pg==='__cfg__'){loadAllVendeurNames().then(()=>{m.innerHTML=rCfg();});}
   else if(pg==='__bilan__'){m.innerHTML=rBilan();}
   else if(pg==='__leads__'){m.innerHTML=rLeadsRecap();}
   else if(pg==='__pwd__'){m.innerHTML=rPwd();setTimeout(loadResets,100);}
@@ -1026,30 +1021,23 @@ function rRAZ(){
 }
 
 // ══ PAGE NOMS VENDEURS ══
-// ÉTAPE 1 : 9 cases VN + 9 cases VO indépendantes
-// ÉTAPE 2 : Qualifier chaque vendeur — VN / VO / les deux
-// vsVN et vsVO sont des tableaux globaux distincts de VS
+// Approche simple : 18 lignes (nom + service VN/VO/les deux)
+// Chaque ligne = un vendeur. Le service détermine où il apparaît dans le site.
 
 var vsVN=[];
 var vsVO=[];
 
-// Charger les deux listes depuis vendeurs_config
-// Convention slots : 1-9 = VN, 11-19 = VO
+// Charger vsVN et vsVO depuis vendeurs_config
 async function loadAllVendeurNames(){
   try{
     var{data,error}=await db.from('vendeurs_config').select('*').order('slot',{ascending:true});
-    vsVN=Array(9).fill('');
-    vsVO=Array(9).fill('');
+    vsVN=[];vsVO=[];
     if(!error&&data){
       data.forEach(function(r){
-        var slot=r.slot||1;
-        var nomVal=r.nom||'';
-        var isGeneric=/^Poste\s+\d+$/i.test(nomVal);
-        if(slot>=1&&slot<=9){
-          vsVN[slot-1]=isGeneric?'':nomVal;
-        } else if(slot>=11&&slot<=19){
-          vsVO[slot-11]=isGeneric?'':nomVal;
-        }
+        var n=r.nom||'';
+        if(!n||/^Poste\s+\d+$/i.test(n))return;
+        if(r.equipe==='VN'&&!vsVN.includes(n))vsVN.push(n);
+        if(r.equipe==='VO'&&!vsVO.includes(n))vsVO.push(n);
       });
     }
   }catch(e){console.warn('loadAllVendeurNames:',e);}
@@ -1058,266 +1046,143 @@ async function loadAllVendeurNames(){
 function rCfg(){
   if(!canAdmin())return locked('Réservé au Chef de groupe ou Directeur');
 
-  // ── Grille VN : 9 cases ──
-  function buildGrid(equipe, vsArr, couleur, bg){
-    let html='';
-    for(let i=0;i<9;i++){
-      const slot=i+1;
-      const v=vsArr[i]||'';
-      const av=v?ini(v):'?';
-      html+=`<div class="cfg-card" style="border-top:3px solid ${couleur}">
-        <div class="cfg-card-top">
-          <div class="cfg-av" id="av-${equipe}-${slot}" style="background:${v?couleur:'var(--text3)'};font-size:11px">${av}</div>
-          <div><div class="cfg-nm" style="font-size:12px;color:var(--text3);font-weight:400">Poste ${slot}</div></div>
-        </div>
-        <div class="cfg-fields"><div class="cfg-f">
-          <div class="cfg-l">Nom vendeur</div>
-          <input type="text" class="cfg-i name-i" id="${equipe}-slot-${slot}" value="${v}"
-            placeholder="Ex : Martin J."
-            oninput="previewVendeurEq('${equipe}',${slot})"
-            style="font-size:13px;padding:7px 10px${v?'':';border-color:'+couleur+';background:'+bg}">
-        </div></div>
-      </div>`;
-    }
-    return html;
-  }
+  // Construire la liste unifiée des 18 postes
+  // On lit vsVN et vsVO pour pré-remplir les noms et services actuels
+  var lignes=[];
+  // Fusionner les deux listes en évitant les doublons
+  var vus=new Set();
+  vsVN.forEach(function(n){if(n&&!vus.has(n)){lignes.push({nom:n,service:'VN'});vus.add(n);}});
+  vsVO.forEach(function(n){if(n&&!vus.has(n)){lignes.push({nom:n,service:'VO'});vus.add(n);}});
+  // Les vendeurs dans les deux équipes
+  vsVN.forEach(function(n){if(vsVO.includes(n)&&lignes.find(l=>l.nom===n)){lignes.find(l=>l.nom===n).service='VN,VO';}});
+  // Compléter jusqu'à 18 lignes vides
+  while(lignes.length<18)lignes.push({nom:'',service:'VN'});
 
-  const gridVN=buildGrid('VN', vsVN, '#1d4ed8', '#eff6ff');
-  const gridVO=buildGrid('VO', vsVO, '#b45309', '#fff7ed');
-
-  // ── Tableau de qualification ──
-  // Construire depuis les deux listes fusionnées
-  // Filtrer les noms génériques "Poste X" — seuls les vrais noms apparaissent
-  function isRealName(n){return n&&!/^Poste\s+\d+$/i.test(n);}
-  var allNoms={};
-  vsVN.forEach(function(n,i){if(isRealName(n)) allNoms[n]={slot:i+1};});
-  vsVO.forEach(function(n,i){if(isRealName(n)) allNoms[n]={slot:i+1};});
-
-  let qualifRows='';
-  Object.keys(allNoms).sort().forEach(function(nom){
-    var vk=nom.replace(/[^a-zA-Z0-9]/g,'_');
-    qualifRows+=`<tr id="qualif-row-${vk}">
-      <td style="padding:10px 14px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="av" style="width:30px;height:30px;font-size:11px;background:#4b5a7a;color:#fff">${ini(nom)}</div>
-          <div style="font-weight:600;font-size:13px">${nom}</div>
-        </div>
+  var rows='';
+  lignes.forEach(function(l,i){
+    var num=i+1;
+    var nom=l.nom||'';
+    var svc=l.service||'VN';
+    var selVN=svc==='VN'?'selected':'';
+    var selVO=svc==='VO'?'selected':'';
+    var selB=svc==='VN,VO'?'selected':'';
+    var av=nom?ini(nom):'?';
+    var avBg=nom?(svc==='VO'?'#b45309':svc==='VN,VO'?'#7c3aed':'#1d4ed8'):'var(--text3)';
+    rows+=`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 12px;width:36px;text-align:center">
+        <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;font-weight:500">${num}</span>
       </td>
-      <td style="padding:10px 14px" id="qualif-badge-${vk}">
-        <span style="font-size:11px;color:var(--text3)">chargement...</span>
+      <td style="padding:8px 12px;width:40px">
+        <div id="av-cfg-${num}" style="width:30px;height:30px;border-radius:50%;background:${avBg};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${av}</div>
       </td>
-      <td style="padding:10px 14px">
-        <div style="display:flex;align-items:center;gap:6px">
-          <button onclick="setQualif('${nom}','VN')" id="qbtn-vn-${vk}"
-            style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #3b82f6;background:#eff6ff;color:#1d4ed8">VN</button>
-          <button onclick="setQualif('${nom}','VO')" id="qbtn-vo-${vk}"
-            style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #f59e0b;background:#fff7ed;color:#b45309">VO</button>
-          <button onclick="setQualif('${nom}','VN,VO')" id="qbtn-both-${vk}"
-            style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #7c3aed;background:#f5f3ff;color:#6d28d9">VN + VO</button>
-        </div>
+      <td style="padding:8px 12px">
+        <input type="text" id="cfg-nom-${num}" value="${nom}" placeholder="Prénom Nom"
+          oninput="previewCfgRow(${num})"
+          style="width:100%;padding:7px 11px;border-radius:6px;border:1px solid var(--border2);font-size:13px;font-family:'DM Sans',sans-serif;background:${nom?'#fff':'#fff7ed'};color:var(--text)">
+      </td>
+      <td style="padding:8px 12px;width:180px">
+        <select id="cfg-svc-${num}" onchange="previewCfgRow(${num})"
+          style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border2);font-size:13px;font-family:'DM Sans',sans-serif;background:#fff;color:var(--text)">
+          <option value="VN" ${selVN}>🔵 VN — Neuf</option>
+          <option value="VO" ${selVO}>🟠 VO — Occasion</option>
+          <option value="VN,VO" ${selB}>🟣 VN + VO — les deux</option>
+        </select>
       </td>
     </tr>`;
   });
 
-  const hasVendeurs=Object.keys(allNoms).length>0;
-
-  return`
-  <!-- ══ ÉTAPE 1 : 9 cases VN + 9 cases VO ══ -->
-  <div class="sec">
-    <div class="sec-h" style="background:linear-gradient(135deg,#1e3a8a,#1d4ed8);padding:12px 18px">
-      <div class="sec-title"><div class="sic" style="background:rgba(255,255,255,.2)">①</div>Vendeurs Neuf (VN) — 9 postes</div>
-    </div>
-    <div class="cfg-grid">${gridVN}</div>
-    <button class="btn-sv" onclick="saveCfgEquipe('VN')"
-      style="background:#1d4ed8;margin-bottom:0">
-      ✓ Enregistrer les 9 vendeurs VN
-    </button>
-  </div>
-
-  <div class="sec" style="margin-top:14px">
-    <div class="sec-h" style="background:linear-gradient(135deg,#92400e,#b45309);padding:12px 18px">
-      <div class="sec-title"><div class="sic" style="background:rgba(255,255,255,.2)">①</div>Vendeurs Occasion (VO) — 9 postes</div>
-    </div>
-    <div class="cfg-grid">${gridVO}</div>
-    <button class="btn-sv" onclick="saveCfgEquipe('VO')"
-      style="background:#b45309;margin-bottom:0">
-      ✓ Enregistrer les 9 vendeurs VO
-    </button>
-  </div>
-
-  <!-- ══ ÉTAPE 2 : Qualification ══ -->
-  <div class="sec" style="margin-top:14px">
+  return`<div class="sec">
     <div class="sec-h dir" style="padding:12px 18px">
-      <div class="sec-title"><div class="sic">②</div>Qualifier les services — VN · VO · les deux</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.5)">Cliquez sur le service de chaque vendeur</div>
+      <div class="sec-title"><div class="sic">👥</div>Vendeurs — 18 postes disponibles</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.5)">Saisissez le nom · choisissez le service · enregistrez</div>
     </div>
-    ${hasVendeurs ? `
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <div style="padding:12px 16px;background:#f8f9ff;border-bottom:1px solid var(--border);font-size:12px;color:var(--text3)">
+      💡 <strong>Un nom par ligne.</strong> Choisissez <strong>VN</strong>, <strong>VO</strong> ou <strong>VN+VO</strong> — le vendeur apparaîtra automatiquement dans la bonne partie du site. Laissez vide les postes non utilisés.
+    </div>
+    <table style="width:100%;border-collapse:collapse">
       <thead><tr style="background:var(--bg)">
-        <th style="padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border)">Vendeur</th>
-        <th style="padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border)">Service actuel</th>
-        <th style="padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border)">Changer</th>
+        <th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);text-align:center">#</th>
+        <th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)"></th>
+        <th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Nom du vendeur</th>
+        <th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Service</th>
       </tr></thead>
-      <tbody id="qualif-tbody">${qualifRows}</tbody>
+      <tbody>${rows}</tbody>
     </table>
-    ` : `<div style="padding:40px;text-align:center;color:var(--text3)">
-      <div style="font-size:32px;margin-bottom:10px">👆</div>
-      <div>Saisissez les noms VN et/ou VO et enregistrez — les vendeurs apparaîtront ici.</div>
-    </div>`}
+    <button class="btn-sv purple" onclick="saveCfgAll()" style="background:var(--navy2);font-size:14px;padding:12px">
+      ✓ Enregistrer tous les vendeurs
+    </button>
   </div>`;
 }
 
-// Aperçu live des initiales
-function previewVendeurEq(equipe,slot){
-  var el=document.getElementById(equipe+'-slot-'+slot);
-  if(!el)return;
-  var nom=el.value.trim()||'?';
-  var av=document.getElementById('av-'+equipe+'-'+slot);
-  if(av)av.textContent=ini(nom);
+// Aperçu live : met à jour l'avatar et la couleur de la ligne
+function previewCfgRow(num){
+  var nomEl=document.getElementById('cfg-nom-'+num);
+  var svcEl=document.getElementById('cfg-svc-'+num);
+  var avEl=document.getElementById('av-cfg-'+num);
+  if(!nomEl||!svcEl||!avEl)return;
+  var nom=nomEl.value.trim();
+  var svc=svcEl.value;
+  avEl.textContent=nom?ini(nom):'?';
+  avEl.style.background=nom?(svc==='VO'?'#b45309':svc==='VN,VO'?'#7c3aed':'#1d4ed8'):'var(--text3)';
+  nomEl.style.background=nom?'#fff':'#fff7ed';
 }
 
-// Sauvegarder les 9 vendeurs d'une équipe précise
-async function saveCfgEquipe(equipe){
+// Sauvegarder toutes les 18 lignes en une seule opération
+async function saveCfgAll(){
   if(role!=='directeur'){toast('Réservé au directeur');return;}
-  const names=[];
-  for(let i=0;i<9;i++){
-    const el=document.getElementById(equipe+'-slot-'+(i+1));
-    names.push(el?el.value.trim():'');
-  }
+  showL(true);
   try{
-    // Convention : VN=slots 1-9, VO=slots 11-19
-    var slotBase=equipe==='VO'?10:0;
-    // DELETE les slots de cette équipe
-    await db.from('vendeurs_config').delete().gte('slot',slotBase+1).lte('slot',slotBase+9);
-    // Ne garder que les postes avec un vrai nom (pas vide, pas "Poste X" générique)
-    const rows=names
-      .map((nom,i)=>({slot:slotBase+i+1,nom:nom,equipe:equipe}))
-      .filter(r=>r.nom && !/^Poste\s+\d+$/i.test(r.nom));
-    if(rows.length===0){toast('Aucun nom saisi — remplissez au moins un poste');return;}
-    const ins=await db.from('vendeurs_config').insert(rows);
-    if(ins.error){toast('Erreur: '+ins.error.message);return;}
-    // Mettre à jour les tableaux globaux
-    if(equipe==='VN') vsVN=names.map((n,i)=>n||(vsVN[i]||''));
-    if(equipe==='VO') vsVO=names.map((n,i)=>n||(vsVO[i]||''));
-    toast('✓ '+rows.length+' vendeur'+(rows.length>1?'s':'')+' '+equipe+' enregistrés');
-    // Recharger les données si on est sur cette équipe
-    if(equipe===currentEquipe){
-      await loadVendeurNames();
-      await loadData();
+    // Lire les 18 lignes
+    var vendeurs=[];
+    for(var i=1;i<=18;i++){
+      var nomEl=document.getElementById('cfg-nom-'+i);
+      var svcEl=document.getElementById('cfg-svc-'+i);
+      if(!nomEl)continue;
+      var nom=nomEl.value.trim();
+      var svc=svcEl?svcEl.value:'VN';
+      if(!nom||/^Poste\s+\d+$/i.test(nom))continue; // ignorer vides et génériques
+      vendeurs.push({nom:nom,service:svc,poste:i});
     }
-    // Rafraîchir les badges
-    await loadAllVendeurNames();
-    // Recharger vsVN/vsVO depuis Supabase PUIS re-rendre la page cfg
-    await loadAllVendeurNames();
-    var m=document.getElementById('main');
-    if(m){m.innerHTML=rCfg();setTimeout(loadQualifBadges,150);}
-  }catch(e){toast('Erreur: '+e.message);console.error(e);}
-}
 
-// Charger et afficher les badges de service actuels depuis vendeurs_config
-async function loadQualifBadges(){
-  try{
-    var{data}=await db.from('vendeurs_config').select('nom,equipe');
-    if(!data)return;
-    var nomEquipes={};
-    data.forEach(function(r){
-      if(!nomEquipes[r.nom])nomEquipes[r.nom]=[];
-      if(!nomEquipes[r.nom].includes(r.equipe))nomEquipes[r.nom].push(r.equipe);
-    });
-    // Parcourir tous les vendeurs affichés dans le tableau
-    document.querySelectorAll('[id^="qualif-badge-"]').forEach(function(badgeEl){
-      var vk=badgeEl.id.replace('qualif-badge-','');
-      // Retrouver le nom depuis l'ID (inverser le replace)
-      var nom='';
-      // Chercher dans les lignes du tableau
-      var row=badgeEl.closest('tr');
-      if(row){
-        var nameEl=row.querySelector('[style*="font-weight:600"]');
-        if(nameEl)nom=nameEl.textContent.trim();
+    // Supprimer TOUT dans vendeurs_config
+    await db.from('vendeurs_config').delete().gte('slot',1);
+    await new Promise(r=>setTimeout(r,400)); // attendre le DELETE
+
+    // Reconstruire proprement
+    // Slots VN : 1-18 (chaque vendeur a un slot unique = son numéro de poste)
+    // Slots VO : 20+poste (ex poste 3 VO = slot 23) → garantit unicité
+    var inserts=[];
+    vendeurs.forEach(function(v){
+      if(v.service==='VN'||v.service==='VN,VO'){
+        inserts.push({slot:v.poste,nom:v.nom,equipe:'VN'});
       }
-      if(!nom)return;
-      var equipes=nomEquipes[nom]||[];
-      var haVN=equipes.includes('VN');
-      var haVO=equipes.includes('VO');
-      var label,color,bg,border;
-      if(haVN&&haVO){label='VN + VO';color='#6d28d9';bg='#f5f3ff';border='#7c3aed';}
-      else if(haVN){label='VN';color='#1d4ed8';bg='#eff6ff';border='#3b82f6';}
-      else if(haVO){label='VO';color='#b45309';bg='#fff7ed';border='#f59e0b';}
-      else{label='Non qualifié';color='var(--text3)';bg='var(--bg)';border='var(--border2)';}
-      badgeEl.innerHTML='<span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:'+bg+';color:'+color+';border:2px solid '+border+'">'+label+'</span>';
-      // Boutons actifs
-      var btnVN=document.getElementById('qbtn-vn-'+vk);
-      var btnVO=document.getElementById('qbtn-vo-'+vk);
-      var btnBoth=document.getElementById('qbtn-both-'+vk);
-      if(btnVN){btnVN.style.fontWeight=(haVN&&!haVO)?'900':'500';btnVN.style.opacity=(haVN&&!haVO)?'1':'0.5';btnVN.style.boxShadow=(haVN&&!haVO)?'0 0 0 3px rgba(59,130,246,.4)':'';}
-      if(btnVO){btnVO.style.fontWeight=(haVO&&!haVN)?'900':'500';btnVO.style.opacity=(haVO&&!haVN)?'1':'0.5';btnVO.style.boxShadow=(haVO&&!haVN)?'0 0 0 3px rgba(245,158,11,.4)':'';}
-      if(btnBoth){btnBoth.style.fontWeight=(haVN&&haVO)?'900':'500';btnBoth.style.opacity=(haVN&&haVO)?'1':'0.5';btnBoth.style.boxShadow=(haVN&&haVO)?'0 0 0 3px rgba(124,58,237,.4)':'';}
+      if(v.service==='VO'||v.service==='VN,VO'){
+        inserts.push({slot:v.poste+20,nom:v.nom,equipe:'VO'});
+      }
     });
-  }catch(e){console.warn('loadQualifBadges:',e);}
-}
 
-// Qualifier un vendeur — version simplifiée et fiable
-async function setQualif(nom,service){
-  try{
-    // 1. Lire DEPUIS SUPABASE les lignes actuelles pour ce vendeur
-    var existing=await db.from('vendeurs_config').select('slot,equipe').eq('nom',nom);
-    var rows=existing.data||[];
+    if(inserts.length===0){showL(false);toast('Aucun vendeur à enregistrer');return;}
 
-    // Trouver le slot VN (1-9) et VO (11-19) actuels dans la base
-    var rowVN=rows.find(r=>r.slot>=1&&r.slot<=9);
-    var rowVO=rows.find(r=>r.slot>=11&&r.slot<=19);
+    var ins=await db.from('vendeurs_config').insert(inserts);
+    if(ins.error){showL(false);toast('Erreur: '+ins.error.message);console.error(ins.error);return;}
 
-    // Si le vendeur n'a pas encore de slot dans une équipe, en chercher un libre dans Supabase
-    async function freeSlot(min,max){
-      var allRows=await db.from('vendeurs_config').select('slot').gte('slot',min).lte('slot',max);
-      var used=new Set((allRows.data||[]).map(r=>r.slot));
-      for(var s=min;s<=max;s++){if(!used.has(s))return s;}
-      return min; // fallback si tout pris
+    // Mettre à jour vsVN et vsVO en mémoire
+    vsVN=vendeurs.filter(v=>v.service==='VN'||v.service==='VN,VO').map(v=>v.nom);
+    vsVO=vendeurs.filter(v=>v.service==='VO'||v.service==='VN,VO').map(v=>v.nom);
+
+    // Mettre à jour aussi la table utilisateurs pour les vendeurs avec compte
+    for(var v of vendeurs){
+      await db.from('utilisateurs').update({equipe:v.service}).eq('vendeur_nom',v.nom).catch(()=>{});
     }
 
-    var sVN=rowVN?rowVN.slot:null;
-    var sVO=rowVO?rowVO.slot:null;
+    toast('✓ '+vendeurs.length+' vendeur'+(vendeurs.length>1?'s':'')+' enregistrés');
 
-    // Calculer les slots nécessaires selon le service demandé
-    if((service==='VN'||service==='VN,VO')&&!sVN) sVN=await freeSlot(1,9);
-    if((service==='VO'||service==='VN,VO')&&!sVO) sVO=await freeSlot(11,19);
-
-    // 2. Supprimer toutes les lignes existantes pour ce vendeur
-    var del=await db.from('vendeurs_config').delete().eq('nom',nom);
-    if(del.error){toast('Erreur suppression: '+del.error.message);return;}
-
-    // Pause pour que le DELETE soit effectif
-    await new Promise(r=>setTimeout(r,300));
-
-    // 3. Réinsérer selon service — slots VN(1-9) et VO(11-19) toujours différents
-    if(service==='VN,VO'){
-      var r1=await db.from('vendeurs_config').insert({nom:nom,equipe:'VN',slot:sVN});
-      if(r1.error){toast('Erreur VN: '+r1.error.message);console.error(r1.error);return;}
-      var r2=await db.from('vendeurs_config').insert({nom:nom,equipe:'VO',slot:sVO});
-      if(r2.error){toast('Erreur VO: '+r2.error.message);console.error(r2.error);return;}
-    } else if(service==='VN'){
-      var r1=await db.from('vendeurs_config').insert({nom:nom,equipe:'VN',slot:sVN});
-      if(r1.error){toast('Erreur VN: '+r1.error.message);return;}
-    } else {
-      var r1=await db.from('vendeurs_config').insert({nom:nom,equipe:'VO',slot:sVO});
-      if(r1.error){toast('Erreur VO: '+r1.error.message);return;}
-    }
-
-    // Mettre à jour la table utilisateurs si compte existant
-    var uRes=await db.from('utilisateurs').select('id').eq('vendeur_nom',nom).limit(1);
-    if(uRes.data&&uRes.data.length>0){
-      await db.from('utilisateurs').update({equipe:service}).eq('vendeur_nom',nom);
-    }
-
-    toast(nom+' → '+service+' ✓');
-    // Recharger les tableaux globaux
-    await loadAllVendeurNames();
-    // Rafraîchir les badges sans recharger toute la page
-    await loadQualifBadges();
-    // Recharger les données de l'équipe courante
+    // Recharger les données si nécessaire
     await loadVendeurNames();
     await loadData();
-  }catch(e){toast('Erreur setQualif: '+e.message);console.error(e);}
+
+  }catch(e){toast('Erreur: '+e.message);console.error(e);}
+  showL(false);
 }
 
 function locked(msg='Accès réservé au Chef de groupe ou Directeur'){
