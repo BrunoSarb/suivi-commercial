@@ -5,116 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Suivi Commercial 2026</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-function showReset(){
-  const b=document.getElementById('reset-box');
-  b.style.display=b.style.display==='none'?'block':'none';
-}
-
-async function sendReset(){
-  const login=document.getElementById('rst-login').value.trim().toLowerCase();
-  const pass=document.getElementById('rst-pass').value.trim();
-  if(!login||!pass){alert('Identifiant et nouveau mot de passe requis.');return}
-  if(pass.length<4){alert('Mot de passe trop court (4 caractères minimum).');return}
-  // Vérifier que le login existe — d'abord BUILTIN, puis Supabase
-  const existsLocal=!!BUILTIN[login];
-  let existsDB=false;
-  try{
-    const{data,error}=await db.from('utilisateurs').select('id').eq('login',login).limit(1);
-    if(!error&&data&&data.length>0) existsDB=true;
-  }catch(e){ console.warn('Supabase check:',e); }
-  if(!existsLocal&&!existsDB){
-    alert('Identifiant introuvable. Vérifiez votre saisie ou contactez votre administrateur.');return;
-  }
-  // Enregistrer la demande
-  try{
-    await db.from('reset_demandes').insert({login,nouveau_mdp:pass,statut:'en_attente'});
-  }catch(e){ console.warn('Demande stockée localement uniquement'); }
-  document.getElementById('rst-ok').style.display='block';
-  setTimeout(()=>{document.getElementById('rst-ok').style.display='none';document.getElementById('reset-box').style.display='none';},4000);
-}
-
-// ── PAGE MOT DE PASSE (directeur) ──
-function rPwd(){
-  if(role!=='directeur')return locked('Accès réservé au Directeur');
-  return`<div class="sec">
-    <div class="sec-h dir"><div class="sec-title"><div class="sic">🔑</div>Gestion des mots de passe</div></div>
-    <div style="padding:18px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div>
-          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Modifier un mot de passe</div>
-          <div class="cfg-fields" style="gap:10px">
-            <div class="cfg-f"><div class="cfg-l">Identifiant</div>
-              <select class="cfg-i" id="pwd-login" style="font-family:'DM Sans',sans-serif">
-                ${Object.keys(BUILTIN).map(k=>`<option value="${k}">${k}</option>`).join('')}
-              </select>
-            </div>
-            <div class="cfg-f"><div class="cfg-l">Nouveau mot de passe</div><input type="text" class="cfg-i" id="pwd-new" placeholder="Nouveau mot de passe"></div>
-            <button class="btn-ok" onclick="changePwd()" style="margin-top:4px;width:100%">Valider le changement</button>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Demandes de réinitialisation</div>
-          <div id="reset-list">
-            <div style="color:var(--text3);font-size:13px">Chargement...</div>
-          </div>
-          <button onclick="loadResets()" style="margin-top:10px;background:none;border:1px solid var(--border2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif">Actualiser</button>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
-async function changePwd(){
-  const login=document.getElementById('pwd-login')?.value;
-  const pass=document.getElementById('pwd-new')?.value.trim();
-  if(!login||!pass){toast('Identifiant et mot de passe requis');return}
-  if(pass.length<4){toast('Mot de passe trop court (4 caractères min.)');return}
-  // Update BUILTIN local
-  if(BUILTIN[login]) BUILTIN[login].pass=pass;
-  // Update Supabase
-  const{error}=await db.from('utilisateurs').update({mot_de_passe:pass}).eq('login',login);
-  if(error) toast('⚠️ Erreur Supabase — changement local uniquement');
-  else toast(`Mot de passe de "${login}" modifié ✓`);
-  document.getElementById('pwd-new').value='';
-}
-
-async function loadResets(){
-  const el=document.getElementById('reset-list');
-  if(!el)return;
-  try{
-    const{data,error}=await db.from('reset_demandes').select('*').eq('statut','en_attente').order('created_at',{ascending:false});
-    if(error||!data||data.length===0){
-      el.innerHTML='<div style="color:var(--text3);font-size:13px">Aucune demande en attente</div>';return;
-    }
-    el.innerHTML=data.map(d=>`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:6px;margin-bottom:6px;border:1px solid var(--border)">
-        <div>
-          <div style="font-weight:500;font-size:13px">${d.login}</div>
-          <div style="font-size:11px;color:var(--text3)">Nouveau mdp : <code style="background:#f0f4ff;padding:1px 5px;border-radius:3px">${d.nouveau_mdp}</code></div>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button onclick="validerReset(${d.id},'${d.login}','${d.nouveau_mdp}')" style="background:#dcfce7;color:#15803d;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Valider</button>
-          <button onclick="refuserReset(${d.id})" style="background:var(--red2);color:#b91c1c;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Refuser</button>
-        </div>
-      </div>`).join('');
-  }catch(e){el.innerHTML='<div style="color:var(--text3);font-size:12px">Table reset_demandes manquante — lancez le SQL Supabase</div>'}
-}
-
-async function validerReset(id,login,pass){
-  if(BUILTIN[login])BUILTIN[login].pass=pass;
-  await db.from('utilisateurs').update({mot_de_passe:pass}).eq('login',login).catch(()=>{});
-  await db.from('reset_demandes').update({statut:'validé'}).eq('id',id).catch(()=>{});
-  toast(`Mot de passe de "${login}" mis à jour ✓`);
-  loadResets();
-}
-
-async function refuserReset(id){
-  await db.from('reset_demandes').update({statut:'refusé'}).eq('id',id).catch(()=>{});
-  toast('Demande refusée');
-  loadResets();
-}
-</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --navy:#0f1f3d;--navy2:#1a3a6e;--navy3:#2251a3;
@@ -439,11 +330,17 @@ body.theme-vo {
 }
 body.theme-vo .kpibar{background:var(--kpi-bg)}
 body.theme-vo .sidebar{background:linear-gradient(180deg,#431407,#3a1206)}
+
+/* ══ CORRECTION BUG 1 : texte sidebar blanc en mode VO ══ */
 body.theme-vo .sbb{color:#fff !important}
-body.theme-vo .sb-lbl{color:rgba(255,255,255,.5) !important}
+body.theme-vo .sb-lbl{color:rgba(255,255,255,.55) !important}
+body.theme-vo .av{background:rgba(255,255,255,.15);color:#fff}
 body.theme-vo .vb{background:rgba(255,255,255,.15);color:rgba(255,255,255,.8)}
 body.theme-vo .sbb.act .vb{background:rgba(255,255,255,.3);color:#fff}
-body.theme-vo .sbb:hover{background:rgba(245,158,11,.15);border-left-color:#f59e0b}
+body.theme-vo .sbb:hover{background:rgba(245,158,11,.2)}
+body.theme-vo .sbb.act{background:rgba(255,255,255,.15);color:#fff;font-weight:600}
+body.theme-vo .sbb.act .av{background:rgba(255,255,255,.3);color:#fff}
+
 body.theme-vo .sec-h{background:linear-gradient(135deg,#7c2d12,#92400e)}
 body.theme-vo .sec-h.n1{background:linear-gradient(135deg,#431407,#7c2d12)}
 body.theme-vo .sec-h.n2{background:linear-gradient(135deg,#7c2d12,#b45309)}
@@ -497,7 +394,7 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
 <div class="loader hidden" id="loader"><div class="lcard"><div class="spin"></div><div class="ltxt">Chargement...</div></div></div>
 <div class="toast" id="toast"></div>
 
-<!-- ══ APP (hidden until login) ══ -->
+<!-- ══ APP ══ -->
 <div id="app" style="display:none;flex-direction:column;flex:1">
 
   <div class="brand-bar">
@@ -514,16 +411,13 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
     </div>
   </div>
 
-  <!-- KPI EQUIPE -->
   <div class="kpibar" id="kb-team">
     <div class="kb-label" id="kb-label-team">Tableau de bord équipe — VN</div>
     <div class="kpi-row">
-      <!-- BLOC 1: Leads + Contacts + AC -->
       <div class="kpi"><div class="kpi-lbl">Leads ouverts</div><div class="kv orange" id="t-lo">0</div><div class="kpi-sub">à traiter</div></div>
       <div class="kpi"><div class="kpi-lbl">Contacts saisis</div><div class="kv blue" id="t-ct">0</div><div class="kpi-sub">cumul équipe</div></div>
       <div class="kpi"><div class="kpi-lbl">Affaires chaudes</div><div class="kv orange" id="t-ac">0</div><div class="kpi-sub">en cours</div></div>
       <div class="kdiv"></div>
-      <!-- BLOC 2: Obj + Réalisations + Financements (fond accentué) -->
       <div class="kpi kpi-accent"><div class="kpi-lbl">Obj. commandes</div><div class="kv gold" id="t-ob">0</div><div class="kpi-sub">cumulé équipe</div></div>
       <div class="kpi kpi-accent" style="min-width:110px">
         <div class="kpi-lbl">Réalisations</div>
@@ -537,20 +431,17 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
         <div class="kpi-sub" id="t-pfi">0%</div>
       </div>
       <div class="kdiv"></div>
-      <!-- BLOC 3: Options -->
       <div class="kpi"><div class="kpi-lbl">Gravages</div><div class="kv sm" id="t-gr">0</div><div class="kpi-sub" id="t-pgr">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Coyote</div><div class="kv sm purple" id="t-co">0</div><div class="kpi-sub" id="t-pco">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Waxoyl</div><div class="kv sm" id="t-wa">0</div><div class="kpi-sub" id="t-pwa">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">A.Lease</div><div class="kv sm" id="t-al">0</div><div class="kpi-sub" id="t-pal">0%</div></div>
       <div class="kdiv"></div>
-      <!-- BLOC 4: Cde Stock -->
       <div class="kpi" style="border-left:2px solid #7c3aed;padding-left:12px;margin-left:2px">
         <div class="kpi-lbl" style="color:#ddd6fe">Cde Stock</div>
         <div class="kv" id="t-cs" style="color:#e9d5ff">0</div>
         <div class="kpi-sub" id="t-pcs" style="color:#ddd6fe">0%</div>
       </div>
       <div class="kdiv"></div>
-      <!-- BLOC 5: Taux -->
       <div class="kpi"><div class="kpi-lbl">Tx Leads</div><div class="kv sm" id="t-tl">0%</div><div class="kpi-sub">traitement</div></div>
       <div class="kpi"><div class="kpi-lbl">Tx Transfo.</div><div class="kv sm" id="t-tx">0%</div><div class="kpi-sub">contacts→cde</div></div>
       <div class="equipe-switch">
@@ -561,16 +452,13 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
     </div>
   </div>
 
-  <!-- KPI VENDEUR<!-- KPI VENDEUR individuel -->
   <div class="kpibar vend" id="kb-vend">
     <div class="kb-label" id="vk-nm" style="font-size:14px;font-weight:600;color:#ffffff;letter-spacing:-.01em;margin-bottom:8px">Vendeur</div>
     <div class="kpi-row">
-      <!-- BLOC 1: Leads + Contacts + AC -->
       <div class="kpi"><div class="kpi-lbl">Leads ouverts</div><div class="kv sm orange" id="v-lo">0</div><div class="kpi-sub">à traiter</div></div>
       <div class="kpi"><div class="kpi-lbl">Contacts saisis</div><div class="kv sm blue" id="v-ct">0</div><div class="kpi-sub" id="v-ct-actifs" style="color:rgba(255,255,255,.6)">0 actifs</div></div>
       <div class="kpi"><div class="kpi-lbl">Affaires chaudes</div><div class="kv sm orange" id="v-ac">0</div><div class="kpi-sub">en cours</div></div>
       <div class="kdiv"></div>
-      <!-- BLOC 2: Obj + Réalisations + Financements (fond accentué) -->
       <div class="kpi kpi-accent"><div class="kpi-lbl">Obj. commandes</div><div class="kv sm gold" id="v-ob">0</div></div>
       <div class="kpi kpi-accent" style="min-width:110px">
         <div class="kpi-lbl">Réalisations</div>
@@ -584,20 +472,17 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
         <div class="kpi-sub" id="v-pfi">0%</div>
       </div>
       <div class="kdiv"></div>
-      <!-- BLOC 3: Options -->
       <div class="kpi"><div class="kpi-lbl">Gravages</div><div class="kv sm sm" id="v-gr">0</div><div class="kpi-sub" id="v-pgr">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Coyote</div><div class="kv sm sm purple" id="v-co">0</div><div class="kpi-sub" id="v-pco">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">Waxoyl</div><div class="kv sm sm" id="v-wa">0</div><div class="kpi-sub" id="v-pwa">0%</div></div>
       <div class="kpi"><div class="kpi-lbl">A.Lease</div><div class="kv sm sm" id="v-al">0</div><div class="kpi-sub" id="v-pal">0%</div></div>
       <div class="kdiv"></div>
-      <!-- BLOC 4: Cde Stock -->
       <div class="kpi" style="border-left:2px solid #7c3aed;padding-left:12px;margin-left:2px">
         <div class="kpi-lbl" style="color:#ddd6fe">Cde Stock</div>
         <div class="kv sm" id="v-cs" style="color:#e9d5ff">0</div>
         <div class="kpi-sub" id="v-pcs" style="color:#ddd6fe">0%</div>
       </div>
       <div class="kdiv"></div>
-      <!-- BLOC 5: Taux -->
       <div class="kpi"><div class="kpi-lbl">Tx Leads</div><div class="kv sm sm" id="v-tl">0%</div><div class="kpi-sub">traitement</div></div>
       <div class="kpi"><div class="kpi-lbl">Tx Transfo.</div><div class="kv sm sm" id="v-tx">0%</div><div class="kpi-sub">contacts→cde</div></div>
     </div>
@@ -608,9 +493,8 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
     <div class="main" id="main"></div>
   </div>
 
-</div><!-- /app -->
+</div>
 
-<!-- ══ MODALE VALIDATION COMMANDE (hors app pour stabilité) ══ -->
 <div class="modal-overlay hidden" id="modal-valid">
   <div class="modal-card">
     <div class="modal-title">🏆 Valider la commande</div>
@@ -642,11 +526,10 @@ const db=createClient(SB_URL,SB_KEY);
 
 const OPTS=['Cde Stock','Financement','Gravage','Coyote','Waxoyl','A.Lease'];
 let leadsData={};
-let currentEquipe='VN'; // 'VN' ou 'VO'
+let currentEquipe='VN';
 let bilanDB={};
 let bilanTableExists=false;
 
-// ── App state ──
 let VS=['Nicolas G','Lou Ann E','Sébastien G','Loïc B','Vendeur 5','Vendeur 6','Vendeur 7','Vendeur 8','Vendeur 9'];
 let pg=null, role=null, userLogin=null, userVendeurNom=null;
 let S={}, OBJ={}, GM=[];
@@ -656,19 +539,16 @@ function resetState(){
   VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};OBJ[v]={objectif_commandes:20,objectif_contacts:50}});
 }
 
-// ── Helpers ──
 const ini=n=>n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2);
 const fmt=d=>{if(!d)return'';try{return new Date(d).toLocaleDateString('fr-FR')}catch{return d}};
 const $=id=>document.getElementById(id);
 function sl(id,v){const e=$(id);if(e)e.textContent=v}
-function showL(v){$(v?'loader':'loader').classList.toggle('hidden',!v)}
+function showL(v){$('loader').classList.toggle('hidden',!v)}
 function toast(m,d=2500){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d)}
 const canAdmin=()=>role==='chef'||role==='directeur';
 const roleLabel={'vendeur':'Vendeur','chef':'Chef de groupe','directeur':'Directeur'};
 
-// ── LOGIN ──
-// Comptes intégrés (fallback si table SQL pas encore créée)
 const BUILTIN={
   'chef':       {pass:'chef2026',  role:'chef',      nom:null},
   'directeur':  {pass:'dir2026',   role:'directeur', nom:null},
@@ -689,72 +569,37 @@ async function doLogin(){
   $('li-err').classList.remove('show');
   if(!login||!pass){$('li-err').classList.add('show');return}
   showL(true);
-
-  // 1. Essai via Supabase (table utilisateurs)
   let loggedIn=false;
   try{
-    const{data,error}=await db.from('utilisateurs')
-      .select('*').eq('login',login).eq('mot_de_passe',pass).limit(1);
-    if(!error && data && data.length>0){
+    const{data,error}=await db.from('utilisateurs').select('*').eq('login',login).eq('mot_de_passe',pass).limit(1);
+    if(!error&&data&&data.length>0){
       const u=data[0];
-      role=u.role; userLogin=u.login; userVendeurNom=u.vendeur_nom||null;
-      // Initialiser l'équipe selon le rôle
-      if(role==='vendeur' && u.equipe){
-        currentEquipe = u.equipe;
-      } else {
-        currentEquipe = 'VN'; // Chef/directeur commencent en VN
-      }
+      role=u.role;userLogin=u.login;userVendeurNom=u.vendeur_nom||null;
+      if(role==='vendeur'&&u.equipe){currentEquipe=u.equipe;}
+      else{currentEquipe='VN';}
       loggedIn=true;
-    } else if(error){
-      console.warn('Table utilisateurs inaccessible, passage en mode intégré.',error.message);
-    }
-  }catch(e){
-    console.warn('Erreur Supabase login:',e);
-  }
-
-  // 2. Fallback sur comptes intégrés
+    } else if(error){console.warn('Table utilisateurs inaccessible.',error.message);}
+  }catch(e){console.warn('Erreur Supabase login:',e);}
   if(!loggedIn){
     const acc=BUILTIN[login];
-    if(acc && acc.pass===pass){
-      role=acc.role; userLogin=login; userVendeurNom=acc.nom;
-      loggedIn=true;
-    }
+    if(acc&&acc.pass===pass){role=acc.role;userLogin=login;userVendeurNom=acc.nom;loggedIn=true;}
   }
-
-  if(loggedIn){
-    await startApp();
-  } else {
-    $('li-err').classList.add('show');
-    showL(false);
-  }
+  if(loggedIn){await startApp();}
+  else{$('li-err').classList.add('show');showL(false);}
 }
 
 async function startApp(){
-  // Appliquer thème VO si nécessaire
-  if(currentEquipe==='VO'){
-    document.body.classList.add('theme-vo');
-  } else {
-    document.body.classList.remove('theme-vo');
-  }
-  // Masquer bouton switch pour les vendeurs
-  var eqSwitch = document.querySelector('.equipe-switch');
-  if(eqSwitch){
-    eqSwitch.style.display = (role==='vendeur') ? 'none' : 'flex';
-  }
-  // Load vendeur names from config
+  if(currentEquipe==='VO'){document.body.classList.add('theme-vo');}
+  else{document.body.classList.remove('theme-vo');}
+  var eqSwitch=document.querySelector('.equipe-switch');
+  if(eqSwitch){eqSwitch.style.display=(role==='vendeur')?'none':'flex';}
   await loadVendeurNames();
   resetState();
-  // Set default page
-  if(role==='vendeur'&&userVendeurNom){
-    pg=userVendeurNom;
-  } else {
-    pg=VS[0];
-  }
-  // Update user badge
+  if(role==='vendeur'&&userVendeurNom){pg=userVendeurNom;}
+  else{pg=VS[0];}
   sl('ub-name',userLogin);
   sl('ub-role',roleLabel[role]||role);
   $('ub-av').textContent=(userVendeurNom?ini(userVendeurNom):userLogin.slice(0,2).toUpperCase());
-  // Show app
   $('login-wrap').classList.add('hidden');
   $('app').style.display='flex';
   await loadData();
@@ -762,7 +607,7 @@ async function startApp(){
 
 function doLogout(){
   document.body.classList.remove('theme-vo');
-  currentEquipe = 'VN';
+  currentEquipe='VN';
   role=null;userLogin=null;userVendeurNom=null;pg=null;
   $('login-wrap').classList.remove('hidden');
   $('app').style.display='none';
@@ -772,17 +617,13 @@ function doLogout(){
 
 $('li-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 
-// ── LOAD VENDEUR NAMES ──
 async function loadVendeurNames(){
   try{
     const{data}=await db.from('vendeurs_config').select('*').eq('equipe',currentEquipe).order('slot',{ascending:true});
-    if(data&&data.length>0){
-      VS=data.map(r=>r.nom);
-    }
-  }catch(e){console.log('Using default vendeur names')}
+    if(data&&data.length>0){VS=data.map(r=>r.nom);}
+  }catch(e){console.log('Using default vendeur names');}
 }
 
-// ── LOAD DATA ──
 async function loadData(){
   showL(true);
   try{
@@ -793,14 +634,13 @@ async function loadData(){
       db.from('compteurs').select('*').eq('equipe',currentEquipe),
       db.from('objectifs').select('*').eq('equipe',currentEquipe)
     ]);
-    VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]}});GM=[];
+    VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};});GM=[];
     (cR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].contacts.push(r)});
     (aR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].affaires.push(r)});
     (mR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].memo.push(r);GM.push(r)});
     (kR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].counter=r.valeur??0});
     (oR.data||[]).forEach(r=>{OBJ[r.vendeur]={objectif_commandes:r.objectif_commandes??20,objectif_contacts:r.objectif_contacts??50}});
-  }catch(e){console.error(e);toast('Erreur de connexion à la base')}
-  // Charger bilan annuel
+  }catch(e){console.error(e);toast('Erreur de connexion à la base');}
   try{
     var bR=await db.from('bilan_annuel').select('*').eq('equipe',currentEquipe);
     if(!bR.error&&bR.data){
@@ -813,7 +653,6 @@ async function loadData(){
       bilanTableExists=true;
     }
   }catch(e){console.warn('bilan_annuel:',e.message||e);}
-  // Charger leads
   try{
     const lR=await db.from('leads').select('*');
     if(!lR.error&&lR.data){
@@ -829,15 +668,11 @@ async function loadData(){
   renderAll();
 }
 
-// ── KPI CALCULATIONS ──
 function tKPI(){
   let ct=0,ac=0,ob=0,re=0,cs=0,fi=0,gr=0,co=0,wa=0,al=0;
   VS.forEach(v=>{
     if(!S[v])return;
-    ct+=S[v].counter;
-    ac+=S[v].affaires.length;
-    ob+=OBJ[v]?.objectif_commandes??0;
-    re+=S[v].memo.length;
+    ct+=S[v].counter;ac+=S[v].affaires.length;ob+=OBJ[v]?.objectif_commandes??0;re+=S[v].memo.length;
     S[v].memo.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
   });
   return{ct,ac,ob,re,cs,fi,gr,co,wa,al};
@@ -851,10 +686,9 @@ function vKPI(v){
 function pct(a,b){return b>0?Math.round(a/b*100):0}
 
 function getLeadsOuverts(vendeur){
-  // Leads restants à traiter pour ce vendeur (ou tous si null)
   var mois=new Date().toISOString().slice(0,7);
   var total=0;
-  var vlist = vendeur ? [vendeur] : VS;
+  var vlist=vendeur?[vendeur]:VS;
   vlist.forEach(function(v){
     var lot1=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot1)||{injectes:0,traites:0};
     var lot2=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot2)||{injectes:0,traites:0};
@@ -866,12 +700,11 @@ function getLeadsOuverts(vendeur){
 function getLeadsTxTraitement(vendeur){
   var mois=new Date().toISOString().slice(0,7);
   var inj=0,tr=0;
-  var vlist = vendeur ? [vendeur] : VS;
+  var vlist=vendeur?[vendeur]:VS;
   vlist.forEach(function(v){
     var lot1=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot1)||{injectes:0,traites:0};
     var lot2=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot2)||{injectes:0,traites:0};
-    inj+=lot1.injectes+lot2.injectes;
-    tr+=lot1.traites+lot2.traites;
+    inj+=lot1.injectes+lot2.injectes;tr+=lot1.traites+lot2.traites;
   });
   return inj>0?Math.min(100,Math.round(tr/inj*100)):0;
 }
@@ -880,50 +713,35 @@ function updKPIs(){
   var k=tKPI();
   var lo=getLeadsOuverts(null);
   var tl=getLeadsTxTraitement(null);
-  sl('t-lo',lo);
-  sl('t-ct',k.ct);sl('t-ac',k.ac);sl('t-ob',k.ob);sl('t-re',k.re);
+  sl('t-lo',lo);sl('t-ct',k.ct);sl('t-ac',k.ac);sl('t-ob',k.ob);sl('t-re',k.re);
   var p=k.ob>0?Math.min(100,Math.round(k.re/k.ob*100)):0;
   document.getElementById('t-pg').style.width=p+'%';
-  sl('t-pc',p+'% obj.');
-  sl('t-fi',k.fi);sl('t-pfi',pct(k.fi,k.re)+'%');
-  sl('t-gr',k.gr);sl('t-pgr',pct(k.gr,k.re)+'%');
-  sl('t-co',k.co);sl('t-pco',pct(k.co,k.re)+'%');
-  sl('t-wa',k.wa);sl('t-pwa',pct(k.wa,k.re)+'%');
-  sl('t-al',k.al);sl('t-pal',pct(k.al,k.re)+'%');
-  sl('t-cs',k.cs);sl('t-pcs',pct(k.cs,k.re)+'%');
-  sl('t-tl',tl+'%');
-  sl('t-tx',pct(k.re,k.ct)+'%');
-
+  sl('t-pc',p+'% obj.');sl('t-fi',k.fi);sl('t-pfi',pct(k.fi,k.re)+'%');
+  sl('t-gr',k.gr);sl('t-pgr',pct(k.gr,k.re)+'%');sl('t-co',k.co);sl('t-pco',pct(k.co,k.re)+'%');
+  sl('t-wa',k.wa);sl('t-pwa',pct(k.wa,k.re)+'%');sl('t-al',k.al);sl('t-pal',pct(k.al,k.re)+'%');
+  sl('t-cs',k.cs);sl('t-pcs',pct(k.cs,k.re)+'%');sl('t-tl',tl+'%');sl('t-tx',pct(k.re,k.ct)+'%');
   var isV=VS.includes(pg);
   document.getElementById('kb-vend').classList.toggle('on',isV);
   if(isV){
-    var kv=vKPI(pg);
-    var vlo=getLeadsOuverts(pg);
-    var vtl=getLeadsTxTraitement(pg);
+    var kv=vKPI(pg);var vlo=getLeadsOuverts(pg);var vtl=getLeadsTxTraitement(pg);
     sl('vk-nm',pg);sl('v-lo',vlo);sl('v-ct',kv.ct);sl('v-ac',kv.ac);
     var vActifs=S[pg]?S[pg].contacts.length:0;
     var elActifs=document.getElementById('v-ct-actifs');
-    if(elActifs) elActifs.textContent=vActifs+' actif'+(vActifs>1?'s':'');sl('v-ob',kv.ob);sl('v-re',kv.re);
+    if(elActifs)elActifs.textContent=vActifs+' actif'+(vActifs>1?'s':'');
+    sl('v-ob',kv.ob);sl('v-re',kv.re);
     var vp=kv.ob>0?Math.min(100,Math.round(kv.re/kv.ob*100)):0;
-    document.getElementById('v-pg').style.width=vp+'%';
-    sl('v-pc',vp+'% obj.');
-    sl('v-fi',kv.fi);sl('v-pfi',pct(kv.fi,kv.re)+'%');
-    sl('v-gr',kv.gr);sl('v-pgr',pct(kv.gr,kv.re)+'%');
-    sl('v-co',kv.co);sl('v-pco',pct(kv.co,kv.re)+'%');
-    sl('v-wa',kv.wa);sl('v-pwa',pct(kv.wa,kv.re)+'%');
-    sl('v-al',kv.al);sl('v-pal',pct(kv.al,kv.re)+'%');
-    sl('v-cs',kv.cs);sl('v-pcs',pct(kv.cs,kv.re)+'%');
-    sl('v-tl',vtl+'%');
-    sl('v-tx',pct(kv.re,kv.ct)+'%');
+    document.getElementById('v-pg').style.width=vp+'%';sl('v-pc',vp+'% obj.');
+    sl('v-fi',kv.fi);sl('v-pfi',pct(kv.fi,kv.re)+'%');sl('v-gr',kv.gr);sl('v-pgr',pct(kv.gr,kv.re)+'%');
+    sl('v-co',kv.co);sl('v-pco',pct(kv.co,kv.re)+'%');sl('v-wa',kv.wa);sl('v-pwa',pct(kv.wa,kv.re)+'%');
+    sl('v-al',kv.al);sl('v-pal',pct(kv.al,kv.re)+'%');sl('v-cs',kv.cs);sl('v-pcs',pct(kv.cs,kv.re)+'%');
+    sl('v-tl',vtl+'%');sl('v-tx',pct(kv.re,kv.ct)+'%');
   }
 }
-
 
 function renderSB(){
   let h=`<div class="sb-lbl">Vendeurs</div>`;
   VS.forEach((v,i)=>{
     const n=(S[v]?.contacts.length||0)+(S[v]?.affaires.length||0);
-    // Vendeurs only see their own tab unless admin
     if(role==='vendeur'&&userVendeurNom&&v!==userVendeurNom)return;
     h+=`<button class="sbb${pg===v?' act':''}" onclick="goPage('${v}')">
       <div class="av">${ini(v)}</div><span class="vn">${v}</span>
@@ -940,7 +758,7 @@ function renderSB(){
     h+=`<div class="sb-lbl" style="margin-top:14px">Administration</div>
     <button class="sbb ch${pg==='__obj__'?' act':''}" onclick="goPage('__obj__')"><div class="av">O</div><span class="vn">Objectifs</span></button>
     <button class="sbb ch${pg==='__raz__'?' act':''}" onclick="goPage('__raz__')"><div class="av">R</div><span class="vn">RAZ compteurs</span></button>`;
-  h+=`<button class="sbb ch${pg==='__leads__'?' act':''}" onclick="goPage('__leads__')"><div class="av">L</div><span class="vn">Recap Leads</span></button>`;
+    h+=`<button class="sbb ch${pg==='__leads__'?' act':''}" onclick="goPage('__leads__')"><div class="av">L</div><span class="vn">Recap Leads</span></button>`;
   }
   if(role==='directeur'){
     h+=`<button class="sbb dir${pg==='__cfg__'?' act':''}" onclick="goPage('__cfg__')"><div class="av">N</div><span class="vn">Noms vendeurs</span></button>`;
@@ -957,7 +775,7 @@ function renderMain(){
   else if(pg==='__rank__')m.innerHTML=rRank();
   else if(pg==='__obj__')m.innerHTML=rObj();
   else if(pg==='__raz__')m.innerHTML=rRAZ();
-  else if(pg==='__cfg__')m.innerHTML=rCfg();
+  else if(pg==='__cfg__'){m.innerHTML=rCfg();setTimeout(loadQualifBadges,150);}
   else if(pg==='__bilan__'){m.innerHTML=rBilan();}
   else if(pg==='__leads__'){m.innerHTML=rLeadsRecap();}
   else if(pg==='__pwd__'){m.innerHTML=rPwd();setTimeout(loadResets,100);}
@@ -965,7 +783,6 @@ function renderMain(){
   else m.innerHTML='';
 }
 
-// ── VENDEUR PAGE ──
 function rVend(v){
   if(!S[v])return'';
   const s=S[v];
@@ -1017,13 +834,9 @@ function rVend(v){
   </div>`;
 }
 
-// ── MEMO ──
 function rMemo(){
-  // Totaux globaux
   let cs=0,fi=0,gr=0,co=0,wa=0,al=0;
   GM.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
-
-  // Header global
   let html=`<div class="sec"><div class="sec-h mm"><div class="sec-title"><div class="sic">🏆</div>Mémo — Vue par vendeur</div></div>
   <div class="mk-row" style="grid-template-columns:repeat(8,1fr);border-bottom:1px solid var(--border)">
     <div class="mk"><div class="mk-v">${GM.length}</div><div class="mk-l">Total cdes</div></div>
@@ -1035,18 +848,12 @@ function rMemo(){
     <div class="mk"><div class="mk-v">${al}</div><div class="mk-l">A.Lease</div></div>
     <div class="mk"><div class="mk-v">${GM.length>0?Math.round(fi/GM.length*100):0}%</div><div class="mk-l">Taux fin.</div></div>
   </div>`;
-
-  // Blocs par vendeur
   VS.forEach(v=>{
     const s=S[v]||{memo:[],perduAC:[],perduC:[]};
     const memo=[...s.memo].sort((a,b)=>new Date(b.date)-new Date(a.date));
-    const perduAC=s.perduAC||[];
-    const perduC=s.perduC||[];
+    const perduAC=s.perduAC||[];const perduC=s.perduC||[];
     if(!memo.length&&!perduAC.length&&!perduC.length)return;
-
-    let vfi=0;
-    memo.forEach(m=>{if((m.opts||[]).includes('Financement'))vfi++;});
-
+    let vfi=0;memo.forEach(m=>{if((m.opts||[]).includes('Financement'))vfi++;});
     html+=`<div style="border-top:3px solid var(--navy2);margin-top:0">
       <div style="background:var(--navy);padding:10px 18px;display:flex;align-items:center;gap:10px">
         <div style="width:30px;height:30px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#7c5200">${ini(v)}</div>
@@ -1057,254 +864,285 @@ function rMemo(){
           <span style="font-size:12px;color:rgba(255,255,255,.85);font-weight:500">📞 ${perduC.length} contact${perduC.length>1?'s':''} perdus</span>
         </div>
       </div>`;
-
-    // Bloc 1 : Commandes gagnées
-    html+=`<div style="padding:0 0 0 0">
-      <div style="padding:7px 18px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;display:flex;align-items:center;justify-content:space-between">
+    html+=`<div><div style="padding:7px 18px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:11px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:.05em">Commandes gagnées</span>
         <span style="font-size:11px;color:#15803d">${memo.length>0?Math.round(vfi/memo.length*100):0}% financement</span>
       </div>`;
-    if(!memo.length){
-      html+=`<div style="padding:14px 18px;font-size:13px;color:var(--text3);text-align:center">Aucune commande gagnée</div>`;
-    } else {
+    if(!memo.length){html+=`<div style="padding:14px 18px;font-size:13px;color:var(--text3);text-align:center">Aucune commande gagnée</div>`;}
+    else{
       html+=`<div class="tw"><table style="font-size:12px"><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th><th>Options</th></tr></thead><tbody>`;
       memo.forEach(m=>{
-        const opts=(m.opts||[]).join(', ')||'—';
-        const hasStock=(m.opts||[]).includes('Cde Stock');
-        html+=`<tr${hasStock?' style="background:#f5f3ff"':''}>
-          <td><span class="cd">${fmt(m.date)}</span></td>
-          <td><span class="cc">${m.client}</span>${hasStock?'<span style="margin-left:6px;font-size:9px;background:#7c3aed;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600">STOCK</span>':''}</td>
-          <td><span class="cv">${m.vehicule||''}</span></td>
-          <td style="color:var(--text2)">${opts}</td>
-        </tr>`;
+        const opts=(m.opts||[]).join(', ')||'—';const hasStock=(m.opts||[]).includes('Cde Stock');
+        html+=`<tr${hasStock?' style="background:#f5f3ff"':''}><td><span class="cd">${fmt(m.date)}</span></td><td><span class="cc">${m.client}</span>${hasStock?'<span style="margin-left:6px;font-size:9px;background:#7c3aed;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600">STOCK</span>':''}</td><td><span class="cv">${m.vehicule||''}</span></td><td style="color:var(--text2)">${opts}</td></tr>`;
       });
       html+=`</tbody></table></div>`;
     }
     html+=`</div>`;
-
-    // Bloc 2 : Affaires chaudes perdues
-    html+=`<div>
-      <div style="padding:7px 18px;background:#fef2f2;border-top:1px solid #fecaca;border-bottom:1px solid #fecaca">
-        <span style="font-size:11px;font-weight:600;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Affaires chaudes perdues</span>
-      </div>`;
-    if(!perduAC.length){
-      html+=`<div style="padding:14px 18px;font-size:13px;color:var(--text3);text-align:center">Aucune affaire perdue</div>`;
-    } else {
-      html+=`<div class="tw"><table style="font-size:12px"><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th></tr></thead><tbody>`;
-      perduAC.forEach(a=>{html+=`<tr><td><span class="cd">${fmt(a.date)}</span></td><td><span class="cc">${a.client}</span></td><td><span class="cv">${a.vehicule||''}</span></td></tr>`;});
-      html+=`</tbody></table></div>`;
-    }
+    html+=`<div><div style="padding:7px 18px;background:#fef2f2;border-top:1px solid #fecaca;border-bottom:1px solid #fecaca"><span style="font-size:11px;font-weight:600;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Affaires chaudes perdues</span></div>`;
+    if(!perduAC.length){html+=`<div style="padding:14px 18px;font-size:13px;color:var(--text3);text-align:center">Aucune affaire perdue</div>`;}
+    else{html+=`<div class="tw"><table style="font-size:12px"><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th></tr></thead><tbody>`;perduAC.forEach(a=>{html+=`<tr><td><span class="cd">${fmt(a.date)}</span></td><td><span class="cc">${a.client}</span></td><td><span class="cv">${a.vehicule||''}</span></td></tr>`;});html+=`</tbody></table></div>`;}
     html+=`</div>`;
-
-    // Bloc 3 : Contacts perdus
-    html+=`<div>
-      <div style="padding:7px 18px;background:#fff7ed;border-top:1px solid #fed7aa;border-bottom:1px solid #fed7aa">
-        <span style="font-size:11px;font-weight:600;color:#c2410c;text-transform:uppercase;letter-spacing:.05em">Contacts perdus</span>
-      </div>`;
-    if(!perduC.length){
-      html+=`<div style="padding:14px 18px;font-size:13px;color:var(--text3);text-align:center">Aucun contact perdu</div>`;
-    } else {
-      html+=`<div class="tw"><table style="font-size:12px"><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th></tr></thead><tbody>`;
-      perduC.forEach(ct=>{html+=`<tr><td><span class="cd">${fmt(ct.date)}</span></td><td><span class="cc">${ct.client}</span></td><td><span class="cv">${ct.vehicule||''}</span></td></tr>`;});
-      html+=`</tbody></table></div>`;
-    }
+    html+=`<div><div style="padding:7px 18px;background:#fff7ed;border-top:1px solid #fed7aa;border-bottom:1px solid #fed7aa"><span style="font-size:11px;font-weight:600;color:#c2410c;text-transform:uppercase;letter-spacing:.05em">Contacts perdus</span></div>`;
+    if(!perduC.length){html+=`<div style="padding:14px 18px;font-size:13px;color:var(--text3);text-align:center">Aucun contact perdu</div>`;}
+    else{html+=`<div class="tw"><table style="font-size:12px"><thead><tr><th>Date</th><th>Client</th><th>Véhicule</th></tr></thead><tbody>`;perduC.forEach(ct=>{html+=`<tr><td><span class="cd">${fmt(ct.date)}</span></td><td><span class="cc">${ct.client}</span></td><td><span class="cv">${ct.vehicule||''}</span></td></tr>`;});html+=`</tbody></table></div>`;}
     html+=`</div></div>`;
   });
-
-  html+=`</div>`;
-  return html;
+  html+=`</div>`;return html;
 }
 
-// ── RANKING ──
 function rRank(){
-  const rd=VS.map((v,i)=>{let fi=0;(S[v]?.memo||[]).forEach(m=>{if((m.opts||[]).includes('Financement'))fi++});return{v,i,re:S[v]?.memo.length||0,ob:OBJ[v]?.objectif_commandes??20,ac:S[v]?.affaires.length||0,ct:S[v]?.counter||0,fi}})
-    .sort((a,b)=>b.re-a.re||b.ac-a.ac);
+  const rd=VS.map((v,i)=>{let fi=0;(S[v]?.memo||[]).forEach(m=>{if((m.opts||[]).includes('Financement'))fi++});return{v,i,re:S[v]?.memo.length||0,ob:OBJ[v]?.objectif_commandes??20,ac:S[v]?.affaires.length||0,ct:S[v]?.counter||0,fi}}).sort((a,b)=>b.re-a.re||b.ac-a.ac);
   let rows='';
   rd.forEach((r,pos)=>{
     const p=r.ob>0?Math.min(100,Math.round(r.re/r.ob*100)):0;
     const pc=pos===0?'p1':pos===1?'p2':pos===2?'p3':'pn';
     const pfin=r.re>0?Math.round(r.fi/r.re*100):0;
-    rows+=`<div class="rk-row">
-      <div class="rk-pos ${pc}">${pos+1}</div>
-      <div class="rk-av">${ini(r.v)}</div>
-      <div class="rk-info"><div class="rk-name">${r.v}</div><div class="rk-stat">${r.ct} contacts · ${r.ac} AC · obj. ${r.ob}</div></div>
-      <div class="rk-bar-w">
-        <div class="rk-bar-top"><span class="rk-bar-pct">${p}% de l'objectif</span><span class="rk-bar-pct">${r.re} / ${r.ob} cde</span></div>
-        <div class="rk-track"><div class="rk-fill c${r.i}" style="width:${Math.max(1,p)}%"></div></div>
-      </div>
-      <div class="rk-val">${r.re}</div>
-      <div style="width:80px;text-align:right;flex-shrink:0;border-left:2px solid #bfdbfe;padding-left:12px;margin-left:4px">
-        <div style="font-size:18px;font-weight:700;color:#1d4ed8;font-family:'DM Mono',monospace;line-height:1">${pfin}%</div>
-        <div style="font-size:10px;color:#3b82f6;font-weight:600;margin-top:2px">financement</div>
-      </div>
-    </div>`;
+    rows+=`<div class="rk-row"><div class="rk-pos ${pc}">${pos+1}</div><div class="rk-av">${ini(r.v)}</div><div class="rk-info"><div class="rk-name">${r.v}</div><div class="rk-stat">${r.ct} contacts · ${r.ac} AC · obj. ${r.ob}</div></div><div class="rk-bar-w"><div class="rk-bar-top"><span class="rk-bar-pct">${p}% de l'objectif</span><span class="rk-bar-pct">${r.re} / ${r.ob} cde</span></div><div class="rk-track"><div class="rk-fill c${r.i}" style="width:${Math.max(1,p)}%"></div></div></div><div class="rk-val">${r.re}</div><div style="width:80px;text-align:right;flex-shrink:0;border-left:2px solid #bfdbfe;padding-left:12px;margin-left:4px"><div style="font-size:18px;font-weight:700;color:#1d4ed8;font-family:'DM Mono',monospace;line-height:1">${pfin}%</div><div style="font-size:10px;color:#3b82f6;font-weight:600;margin-top:2px">financement</div></div></div>`;
   });
   return`<div class="sec"><div class="sec-h rk"><div class="sec-title"><div class="sic">🥇</div>Classement vendeurs</div></div><div class="rk-grid">${rows}</div></div>`;
 }
 
-// ── OBJECTIFS (chef/directeur) ──
 function rObj(){
   if(!canAdmin())return locked();
   let cards='';
   VS.forEach(v=>{
     const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
     const o=OBJ[v]||{objectif_commandes:20,objectif_contacts:50};
-    cards+=`<div class="cfg-card">
-      <div class="cfg-card-top"><div class="cfg-av">${ini(v)}</div><div class="cfg-nm">${v}</div></div>
-      <div class="cfg-fields">
-        <div class="cfg-f"><div class="cfg-l">Objectif commandes</div><input type="number" class="cfg-i" id="oc-${vk}" value="${o.objectif_commandes??20}" min="0"></div>
-        <div class="cfg-f"><div class="cfg-l">Objectif contacts</div><input type="number" class="cfg-i" id="ok-${vk}" value="${o.objectif_contacts??50}" min="0"></div>
-      </div>
-    </div>`;
+    cards+=`<div class="cfg-card"><div class="cfg-card-top"><div class="cfg-av">${ini(v)}</div><div class="cfg-nm">${v}</div></div><div class="cfg-fields"><div class="cfg-f"><div class="cfg-l">Objectif commandes</div><input type="number" class="cfg-i" id="oc-${vk}" value="${o.objectif_commandes??20}" min="0"></div><div class="cfg-f"><div class="cfg-l">Objectif contacts</div><input type="number" class="cfg-i" id="ok-${vk}" value="${o.objectif_contacts??50}" min="0"></div></div></div>`;
   });
-  return`<div class="sec"><div class="sec-h ch"><div class="sec-title"><div class="sic">🎯</div>Objectifs mensuels</div></div>
-  <div class="cfg-grid">${cards}</div>
-  <button class="btn-sv" onclick="saveObj()">Enregistrer tous les objectifs</button></div>`;
+  return`<div class="sec"><div class="sec-h ch"><div class="sec-title"><div class="sic">🎯</div>Objectifs mensuels</div></div><div class="cfg-grid">${cards}</div><button class="btn-sv" onclick="saveObj()">Enregistrer tous les objectifs</button></div>`;
 }
 
-// ── RAZ COMPTEURS (chef/directeur) ──
 function rRAZ(){
   if(!canAdmin())return locked();
   let cards='';
   VS.forEach(v=>{
-    const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
     const s=S[v]||{counter:0};
-    cards+=`<div class="cfg-card" style="display:flex;align-items:center;justify-content:space-between">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="cfg-av">${ini(v)}</div>
-        <div>
-          <div style="font-weight:500;font-size:13px">${v}</div>
-          <div style="font-size:11px;color:var(--text3)">Compteur : <strong style="color:var(--navy2);font-family:'DM Mono',monospace">${s.counter}</strong></div>
-        </div>
-      </div>
-      <button class="btn-raz" style="background:var(--red2);color:var(--red);border-color:#fecaca;padding:5px 12px;font-size:11px" onclick="razOne('${v}')">RAZ</button>
-    </div>`;
+    cards+=`<div class="cfg-card" style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:10px"><div class="cfg-av">${ini(v)}</div><div><div style="font-weight:500;font-size:13px">${v}</div><div style="font-size:11px;color:var(--text3)">Compteur : <strong style="color:var(--navy2);font-family:'DM Mono',monospace">${s.counter}</strong></div></div></div><button class="btn-raz" style="background:var(--red2);color:var(--red);border-color:#fecaca;padding:5px 12px;font-size:11px" onclick="razOne('${v}')">RAZ</button></div>`;
   });
-  return`<div class="sec"><div class="sec-h ch"><div class="sec-title"><div class="sic">🔄</div>Remise à zéro des compteurs</div></div>
-  <div class="cfg-grid">${cards}</div>
-  <button class="btn-sv" onclick="razAll()" style="background:var(--red);">RAZ — Tous les compteurs</button></div>`;
+  return`<div class="sec"><div class="sec-h ch"><div class="sec-title"><div class="sic">🔄</div>Remise à zéro des compteurs</div></div><div class="cfg-grid">${cards}</div><button class="btn-sv" onclick="razAll()" style="background:var(--red);">RAZ — Tous les compteurs</button></div>`;
 }
 
-// ── NOM VENDEURS CONFIG (directeur only) ──
+// ══ PAGE NOMS VENDEURS ══
+// Logique en 2 étapes :
+// ÉTAPE 1 : Saisir les noms des 9 postes et enregistrer → crée dans vendeurs_config
+// ÉTAPE 2 : Pour chaque vendeur créé, qualifier son service VN / VO / les deux
+// La partie 2 se construit automatiquement depuis vendeurs_config (pas besoin de compte Supabase)
+
 function rCfg(){
   if(!canAdmin())return locked('Réservé au Chef de groupe ou Directeur');
-  var eq=currentEquipe;
-  var eqColor=eq==='VO'?'#92400e':'var(--navy2)';
-  var eqLabel=eq==='VO'?'🟠 Équipe VO':'🔵 Équipe VN';
+
+  // ── ÉTAPE 1 : Grille de saisie des noms ──
+  // On affiche TOUJOURS les 9 postes avec les noms actuels (VS = noms de l'équipe affichée)
+  // Le directeur peut modifier les noms et enregistrer → saveCfg()
   let cards='';
   VS.forEach((v,i)=>{
     const slot=i+1;
-    cards+=`<div class="cfg-card">
+    const initiales=ini(v);
+    cards+=`<div class="cfg-card" style="position:relative">
       <div class="cfg-card-top">
-        <div class="cfg-av" style="background:${eqColor}">${ini(v)}</div>
-        <div class="cfg-nm">Poste ${slot}</div>
+        <div class="cfg-av" style="background:var(--navy2);font-size:11px">${initiales}</div>
+        <div>
+          <div class="cfg-nm" style="font-size:12px;color:var(--text3);font-weight:400">Poste ${slot}</div>
+        </div>
       </div>
       <div class="cfg-fields">
         <div class="cfg-f">
-          <div class="cfg-l">Nom du vendeur</div>
-          <input type="text" class="cfg-i name-i" id="vn-${slot}" value="${v}" placeholder="Prénom N.">
+          <div class="cfg-l">Nom complet du vendeur</div>
+          <input type="text" class="cfg-i name-i" id="vn-${slot}" value="${v}" placeholder="Ex : Martin J."
+            oninput="previewVendeur(${slot})"
+            style="font-size:14px;padding:8px 10px">
         </div>
       </div>
     </div>`;
   });
-  // Section attribution équipe utilisateurs
-  var userRows='';
-  // On charge les utilisateurs depuis la DB via une fonction séparée
-  return`<div class="sec">
-    <div class="sec-h dir">
-      <div class="sec-title"><div class="sic">👥</div>Noms vendeurs — ${eqLabel}</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.5)">Équipe affichée : ${eq} · basculez avec le bouton VN/VO</div>
-    </div>
-    <div class="cfg-grid">${cards}</div>
-    <button class="btn-sv purple" onclick="saveCfg()">Enregistrer les noms ${eq}</button>
-  </div>
-  <div class="sec" style="margin-top:12px">
-    <div class="sec-h dir"><div class="sec-title"><div class="sic">⚙️</div>Attribution équipe — Vendeurs</div></div>
-    <div id="users-equipe-list" style="padding:16px">
-      <div style="font-size:13px;color:var(--text3);text-align:center;padding:20px">
-        <button onclick="loadUsersEquipe()" style="padding:8px 20px;background:var(--navy2);color:#fff;border:none;border-radius:var(--rs);cursor:pointer;font-size:13px">
-          Charger la liste des utilisateurs
-        </button>
+
+  // ── ÉTAPE 2 : Tableau de qualification des services ──
+  // On lit directement VS (noms déjà enregistrés) et vendeurs_config pour savoir l'équipe actuelle
+  // On construit les lignes à partir de VS (source unique de vérité)
+  let qualifRows='';
+  VS.forEach(function(nom,i){
+    if(!nom||nom.startsWith('Vendeur '))return; // skip postes génériques non encore nommés
+    var slot=i+1;
+    var vk=nom.replace(/[^a-zA-Z0-9]/g,'_');
+    // On va lire l'équipe depuis vendeurs_config via la fonction async,
+    // mais pour le rendu HTML synchrone on met VN par défaut (sera mis à jour par loadQualif)
+    qualifRows+=`<tr id="qualif-row-${vk}">
+      <td style="padding:10px 14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="av" style="width:30px;height:30px;font-size:11px;background:var(--navy2);color:#fff">${ini(nom)}</div>
+          <div>
+            <div style="font-weight:600;font-size:13px">${nom}</div>
+            <div style="font-size:11px;color:var(--text3)">Poste ${slot}</div>
+          </div>
+        </div>
+      </td>
+      <td style="padding:10px 14px" id="qualif-badge-${vk}">
+        <span style="font-size:11px;color:var(--text3)">—</span>
+      </td>
+      <td style="padding:10px 14px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <button onclick="setQualif('${nom}','VN')" id="qbtn-vn-${vk}"
+            style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #3b82f6;background:#eff6ff;color:#1d4ed8;transition:all .12s"
+            onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
+            VN
+          </button>
+          <button onclick="setQualif('${nom}','VO')" id="qbtn-vo-${vk}"
+            style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #f59e0b;background:#fff7ed;color:#b45309;transition:all .12s"
+            onmouseover="this.style.background='#fed7aa'" onmouseout="this.style.background='#fff7ed'">
+            VO
+          </button>
+          <button onclick="setQualif('${nom}','VN,VO')" id="qbtn-both-${vk}"
+            style="padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid #7c3aed;background:#f5f3ff;color:#6d28d9;transition:all .12s"
+            onmouseover="this.style.background='#ede9fe'" onmouseout="this.style.background='#f5f3ff'">
+            VN + VO
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  });
+
+  var hasNamed=VS.some(v=>v&&!v.startsWith('Vendeur '));
+
+  return`
+  <!-- ══ ÉTAPE 1 : Création / nommage des postes ══ -->
+  <div class="sec">
+    <div class="sec-h dir" style="padding:12px 18px">
+      <div class="sec-title">
+        <div class="sic">①</div>
+        Créer les vendeurs — saisir les noms des postes
+      </div>
+      <div style="font-size:11px;color:rgba(255,255,255,.5)">
+        9 postes disponibles · remplissez les noms puis enregistrez
       </div>
     </div>
+    <div style="padding:14px 16px;background:#f8f9ff;border-bottom:1px solid var(--border);font-size:12px;color:var(--text3)">
+      💡 Saisissez le nom complet de chaque vendeur (ex : <strong>Martin J.</strong>) puis cliquez sur <strong>Enregistrer</strong>. Les postes non remplis garderont leur nom actuel.
+    </div>
+    <div class="cfg-grid">${cards}</div>
+    <button class="btn-sv purple" onclick="saveCfg()" style="background:var(--navy2)">
+      ✓ Enregistrer les ${VS.length} vendeurs
+    </button>
+  </div>
+
+  <!-- ══ ÉTAPE 2 : Qualification des services ══ -->
+  <div class="sec" style="margin-top:14px">
+    <div class="sec-h dir" style="padding:12px 18px">
+      <div class="sec-title">
+        <div class="sic">②</div>
+        Qualifier les services — VN · VO · les deux
+      </div>
+      <div style="font-size:11px;color:rgba(255,255,255,.5)">
+        Définissez dans quel service travaille chaque vendeur
+      </div>
+    </div>
+    ${hasNamed ? `
+    <div style="padding:0">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--bg)">
+            <th style="padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border)">Vendeur</th>
+            <th style="padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border)">Service actuel</th>
+            <th style="padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border)">Changer le service</th>
+          </tr>
+        </thead>
+        <tbody id="qualif-tbody">${qualifRows}</tbody>
+      </table>
+    </div>
+    ` : `
+    <div style="padding:40px;text-align:center;color:var(--text3)">
+      <div style="font-size:32px;margin-bottom:12px">👆</div>
+      <div style="font-weight:500;color:var(--text2);margin-bottom:6px">Commencez par nommer les postes</div>
+      <div style="font-size:12px">Remplissez les noms dans l'étape 1 et enregistrez, puis les vendeurs apparaîtront ici.</div>
+    </div>
+    `}
   </div>`;
 }
 
-async function loadUsersEquipe(){
-  var el=document.getElementById('users-equipe-list');
-  if(!el)return;
-  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3)">Chargement...</div>';
+// Charger et afficher les badges de service actuels depuis vendeurs_config
+async function loadQualifBadges(){
   try{
-    var{data,error}=await db.from('utilisateurs').select('*').order('role').order('login');
-    if(error||!data){el.innerHTML='<div style="color:red;padding:16px">Erreur chargement</div>';return;}
-    var rows=data.map(function(u){
-      var eq=u.equipe||'VN';
-      var roleLabel=u.role==='vendeur'?'Vendeur':u.role==='chef'?'Chef':'Directeur';
-      return '<tr>'
-        +'<td style="padding:8px 12px;font-weight:600">'+u.login+'</td>'
-        +'<td style="padding:8px 12px;color:var(--text3)">'+roleLabel+'</td>'
-        +'<td id="nom-sel-'+u.id+'" data-nom="'+(u.vendeur_nom||'')+'" style="padding:8px 12px">'+(u.vendeur_nom||'—')+'</td>'
-        +'<td style="padding:8px 12px">'
-        +'<select id="eq-sel-'+u.id+'" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border2);font-family:DM Sans,sans-serif;font-size:13px">'
-        +'<option value="VN"'+(eq==='VN'?' selected':'')+'">VN</option>'
-        +'<option value="VO"'+(eq==='VO'?' selected':'')+'">VO</option>'
-        +'<option value="VN,VO"'+(eq==='VN,VO'?' selected':'')+'">VN + VO</option>'
-        +'</select>'
-        +' <button onclick="saveUserEquipe('+u.id+')" style="padding:4px 10px;background:var(--green2);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px">OK</button>'
-        +'</td>'
-        +'</tr>';
-    }).join('');
-    el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:13px">'
-      +'<thead><tr style="background:var(--bg2)">'
-      +'<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Login</th>'
-      +'<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Rôle</th>'
-      +'<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Vendeur</th>'
-      +'<th style="padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Équipe</th>'
-      +'</tr></thead>'
-      +'<tbody>'+rows+'</tbody></table>';
-  }catch(e){el.innerHTML='<div style="color:red;padding:16px">Erreur: '+e.message+'</div>';}
+    var{data}=await db.from('vendeurs_config').select('nom,equipe');
+    if(!data)return;
+    // Construire un map nom -> équipes (peut apparaître en VN ET en VO)
+    var nomEquipes={};
+    data.forEach(function(r){
+      if(!nomEquipes[r.nom])nomEquipes[r.nom]=[];
+      nomEquipes[r.nom].push(r.equipe);
+    });
+    VS.forEach(function(nom){
+      if(!nom||nom.startsWith('Vendeur '))return;
+      var vk=nom.replace(/[^a-zA-Z0-9]/g,'_');
+      var badgeEl=document.getElementById('qualif-badge-'+vk);
+      if(!badgeEl)return;
+      var equipes=nomEquipes[nom]||[];
+      var haVN=equipes.includes('VN');
+      var haVO=equipes.includes('VO');
+      var label,color,bg,border;
+      if(haVN&&haVO){label='VN + VO';color='#6d28d9';bg='#f5f3ff';border='#7c3aed';}
+      else if(haVN){label='VN';color='#1d4ed8';bg='#eff6ff';border='#3b82f6';}
+      else if(haVO){label='VO';color='#b45309';bg='#fff7ed';border='#f59e0b';}
+      else{label='Non qualifié';color='var(--text3)';bg='var(--bg)';border='var(--border2)';}
+      badgeEl.innerHTML='<span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:'+bg+';color:'+color+';border:2px solid '+border+'">'+label+'</span>';
+      // Surligner le bouton actif
+      var btnVN=document.getElementById('qbtn-vn-'+vk);
+      var btnVO=document.getElementById('qbtn-vo-'+vk);
+      var btnBoth=document.getElementById('qbtn-both-'+vk);
+      if(btnVN)btnVN.style.opacity=(haVN&&!haVO)?'1':'0.45';
+      if(btnVO)btnVO.style.opacity=(haVO&&!haVN)?'1':'0.45';
+      if(btnBoth)btnBoth.style.opacity=(haVN&&haVO)?'1':'0.45';
+    });
+  }catch(e){console.warn('loadQualifBadges:',e);}
 }
 
-async function saveUserEquipe(userId){
-  var sel=document.getElementById('eq-sel-'+userId);
-  var nomEl=document.getElementById('nom-sel-'+userId);
-  if(!sel)return;
-  var newEquipe=sel.value;
-  var vendeurNom=nomEl?nomEl.dataset.nom:null;
+// Qualifier un vendeur dans un service
+async function setQualif(nom,service){
+  var vk=nom.replace(/[^a-zA-Z0-9]/g,'_');
+  // Trouver le slot depuis VS
+  var slot=VS.indexOf(nom)+1;
+  if(slot===0)slot=99;
   try{
-    // Mettre à jour utilisateurs
-    var res=await db.from('utilisateurs').update({equipe:newEquipe}).eq('id',userId);
-    if(res.error){toast('Erreur: '+res.error.message);return;}
-    // Si vendeur, mettre à jour vendeurs_config aussi
-    if(vendeurNom){
-      // Gérer VN+VO : mettre equipe dans les deux tables
-      var equipes = newEquipe==='VN,VO' ? ['VN','VO'] : [newEquipe];
-      for(var eq of equipes){
-        var vcRes=await db.from('vendeurs_config').select('id,slot').eq('nom',vendeurNom).eq('equipe',eq).limit(1);
-        if(!vcRes.data||vcRes.data.length===0){
-          // Chercher dans l'autre équipe pour copier le slot
-          var vcOther=await db.from('vendeurs_config').select('slot').eq('nom',vendeurNom).limit(1);
-          var slot=vcOther.data&&vcOther.data.length>0?vcOther.data[0].slot:99;
-          await db.from('vendeurs_config').insert({nom:vendeurNom,equipe:eq,slot:slot}).catch(function(){});
-        }
-      }
-      // Supprimer des équipes non assignées si pas VN+VO
-      if(newEquipe!=='VN,VO'){
-        var otherEq=newEquipe==='VN'?'VO':'VN';
-        await db.from('vendeurs_config').delete().eq('nom',vendeurNom).eq('equipe',otherEq).catch(function(){});
+    var equipes=service==='VN,VO'?['VN','VO']:[service];
+    // Insérer dans les équipes demandées si pas encore là
+    for(var eq of equipes){
+      var ex=await db.from('vendeurs_config').select('id').eq('nom',nom).eq('equipe',eq).limit(1);
+      if(!ex.data||ex.data.length===0){
+        await db.from('vendeurs_config').insert({nom:nom,equipe:eq,slot:slot});
       }
     }
-    toast('Équipe mise à jour ✓');
-    // Recharger si on est sur la bonne équipe
-    if(newEquipe===currentEquipe||newEquipe==='VN,VO') await loadData();
+    // Supprimer des équipes non demandées
+    if(service!=='VN,VO'){
+      var autreEq=service==='VN'?'VO':'VN';
+      await db.from('vendeurs_config').delete().eq('nom',nom).eq('equipe',autreEq);
+    }
+    // Mettre à jour aussi la table utilisateurs si ce vendeur a un compte
+    var uRes=await db.from('utilisateurs').select('id').eq('vendeur_nom',nom).limit(1);
+    if(uRes.data&&uRes.data.length>0){
+      await db.from('utilisateurs').update({equipe:service}).eq('vendeur_nom',nom);
+    }
+    toast(nom+' → '+service+' ✓');
+    // Rafraîchir les badges
+    await loadQualifBadges();
+    // Recharger les données si on est sur la bonne équipe
+    if(service===currentEquipe||service==='VN,VO')await loadData();
   }catch(e){toast('Erreur: '+e.message);}
+}
+
+// Aperçu live des initiales quand on tape
+function previewVendeur(slot){
+  var el=document.getElementById('vn-'+slot);
+  if(!el)return;
+  var nom=el.value.trim()||'?';
+  var card=el.closest('.cfg-card');
+  if(!card)return;
+  var av=card.querySelector('.cfg-av');
+  if(av)av.textContent=ini(nom);
 }
 
 function locked(msg='Accès réservé au Chef de groupe ou Directeur'){
   return`<div class="sec"><div class="locked"><div class="locked-icon">🔒</div><div class="locked-title">Accès restreint</div><div class="locked-sub">${msg}</div></div></div>`;
 }
 
-// ── ACTIONS ──
 async function addC(v){
   const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
   const date=$('id-'+vk)?.value,client=$('ic-'+vk)?.value.trim(),veh=$('iv-'+vk)?.value.trim();
@@ -1314,11 +1152,10 @@ async function addC(v){
   S[v].contacts.push(r);S[v].counter++;
   renderAll();
   db.from('contacts').insert(r).catch(()=>{});
-  // Sauvegarder compteur
   (async function(){
     try{
       var ex=await db.from('compteurs').select('id').eq('vendeur',v).limit(1);
-      if(ex.data&&ex.data.length>0) await db.from('compteurs').update({valeur:S[v].counter}).eq('vendeur',v).eq('equipe',currentEquipe);
+      if(ex.data&&ex.data.length>0)await db.from('compteurs').update({valeur:S[v].counter}).eq('vendeur',v).eq('equipe',currentEquipe);
       else await db.from('compteurs').insert({vendeur:v,valeur:S[v].counter,equipe:currentEquipe});
     }catch(e){console.warn('ctr:',e);}
   })();
@@ -1329,10 +1166,8 @@ async function doAC(v,id){
   const i=S[v].contacts.findIndex(c=>c.id===id);if(i<0)return;
   const c=S[v].contacts.splice(i,1)[0];c.opts=[];S[v].affaires.push(c);
   renderAll();
-  try{const r=await db.from('contacts').delete().eq('id',id);if(r.error)console.error('doAC del:',r.error.message);}
-  catch(e){console.error('doAC del:',e.message||e);}
-  try{const r=await db.from('affaires').insert({id:c.id,vendeur:v,date:c.date,client:c.client,vehicule:c.vehicule||'',opts:[]});if(r.error)console.error('doAC ins:',r.error.message);}
-  catch(e){console.error('doAC ins:',e.message||e);}
+  try{await db.from('contacts').delete().eq('id',id);}catch(e){}
+  try{await db.from('affaires').insert({id:c.id,vendeur:v,date:c.date,client:c.client,vehicule:c.vehicule||'',opts:[],equipe:currentEquipe});}catch(e){}
   toast('Passé en affaire chaude 🔥');
 }
 async function doPc(v,id){
@@ -1341,8 +1176,7 @@ async function doPc(v,id){
   if(ct){if(!S[v].perduC)S[v].perduC=[];S[v].perduC.push({...ct,perdu_at:new Date().toISOString()});}
   S[v].contacts=S[v].contacts.filter(c=>c.id!==id);
   renderAll();
-  try{const r=await db.from('contacts').delete().eq('id',id);if(r.error)console.error('doPc:',r.error.message);}
-  catch(e){console.error('doPc:',e.message||e);}
+  try{await db.from('contacts').delete().eq('id',id);}catch(e){}
   toast('Contact supprimé');
 }
 async function doPa(v,id){
@@ -1351,29 +1185,17 @@ async function doPa(v,id){
   if(a){if(!S[v].perduAC)S[v].perduAC=[];S[v].perduAC.push({...a,perdu_at:new Date().toISOString()});}
   S[v].affaires=S[v].affaires.filter(a=>a.id!==id);
   renderAll();
-  try{const r=await db.from('affaires').delete().eq('id',id);if(r.error)console.error('doPa:',r.error.message);}
-  catch(e){console.error('doPa:',e.message||e);}
+  try{await db.from('affaires').delete().eq('id',id);}catch(e){}
   toast('Affaire perdue');
 }
 async function doG(v,id,newVehicule){
   const i=S[v].affaires.findIndex(a=>a.id===id);if(i<0)return;
   const a=S[v].affaires.splice(i,1)[0];
-  if(newVehicule&&newVehicule.trim()) a.vehicule=newVehicule.trim();
+  if(newVehicule&&newVehicule.trim())a.vehicule=newVehicule.trim();
   a.vendeur=v;S[v].memo.push(a);GM.unshift(a);
   renderAll();
-  // Supprimer de affaires
-  try{
-    const del=await db.from('affaires').delete().eq('id',id);
-    if(del.error) console.error('doG delete affaire:', del.error.message);
-    else console.log('Affaire supprimée OK:', id);
-  }catch(e){console.error('doG delete exception:',e.message||e);}
-  // Insérer dans memo
-  try{
-    const newId=uid();
-    const ins=await db.from('memo').insert({id:newId,vendeur:v,date:a.date,client:a.client,vehicule:a.vehicule||'',opts:a.opts||[],equipe:currentEquipe});
-    if(ins.error) console.error('doG insert memo:', ins.error.message);
-    else console.log('Memo inséré OK:', newId);
-  }catch(e){console.error('doG insert exception:',e.message||e);}
+  try{await db.from('affaires').delete().eq('id',id);}catch(e){}
+  try{await db.from('memo').insert({id:uid(),vendeur:v,date:a.date,client:a.client,vehicule:a.vehicule||'',opts:a.opts||[],equipe:currentEquipe});}catch(e){}
   toast('Commande gagnée ! 🏆');
 }
 async function togOpt(v,id,opt){
@@ -1381,10 +1203,8 @@ async function togOpt(v,id,opt){
   const opts=a.opts||[];const i=opts.indexOf(opt);
   if(i>=0)opts.splice(i,1);else opts.push(opt);a.opts=opts;
   renderAll();
-  try{const r=await db.from('affaires').update({opts}).eq('id',id);if(r.error)console.error('togOpt:',r.error.message);}
-  catch(e){console.error('togOpt:',e.message||e);}
+  try{await db.from('affaires').update({opts}).eq('id',id);}catch(e){}
 }
-
 async function razOne(v){
   if(!canAdmin()){toast('Réservé au chef de groupe ou directeur');return}
   if(!confirm(`Remettre le compteur de ${v} à zéro ?`))return;
@@ -1395,40 +1215,28 @@ async function razOne(v){
 async function razAll(){
   if(!canAdmin())return;
   if(!confirm('Remettre TOUS les compteurs à zéro ?'))return;
-  VS.forEach(v=>{if(S[v])S[v].counter=0});
-  renderAll();
+  VS.forEach(v=>{if(S[v])S[v].counter=0});renderAll();
   await Promise.all(VS.map(v=>db.from('compteurs').upsert({vendeur:v,valeur:0},{onConflict:'vendeur'}).catch(()=>{})));
   toast('Tous les compteurs remis à zéro');
 }
-
 async function saveObj(){
   if(!canAdmin())return;
-  // Lire les valeurs des champs
   VS.forEach(v=>{
     const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
-    const ocEl=document.getElementById('oc-'+vk);
-    const okEl=document.getElementById('ok-'+vk);
+    const ocEl=document.getElementById('oc-'+vk);const okEl=document.getElementById('ok-'+vk);
     if(ocEl||okEl){
       const oc=ocEl&&ocEl.value!==''?parseInt(ocEl.value):OBJ[v]?.objectif_commandes??20;
       const ok=okEl&&okEl.value!==''?parseInt(okEl.value):OBJ[v]?.objectif_contacts??50;
-      OBJ[v]={objectif_commandes:isNaN(oc)?0:oc, objectif_contacts:isNaN(ok)?0:ok};
+      OBJ[v]={objectif_commandes:isNaN(oc)?0:oc,objectif_contacts:isNaN(ok)?0:ok};
     }
   });
-  // Mise à jour visuelle immédiate
-  renderAll();
-  toast('Objectifs mis à jour ✓');
-  // Sync Supabase arrière-plan
-  let dbOk=true;
+  renderAll();toast('Objectifs mis à jour ✓');
   for(const v of VS){
-    const res=await db.from('objectifs').upsert(
-      {vendeur:v,objectif_commandes:OBJ[v].objectif_commandes,objectif_contacts:OBJ[v].objectif_contacts},
-      {onConflict:'vendeur'}
-    );
-    if(res.error){console.warn('Supabase objectifs:',res.error.message);dbOk=false;}
+    await db.from('objectifs').upsert({vendeur:v,objectif_commandes:OBJ[v].objectif_commandes,objectif_contacts:OBJ[v].objectif_contacts},{onConflict:'vendeur'}).catch(()=>{});
   }
-  if(!dbOk) toast('Sauvegardé localement. Lancez le SQL Supabase pour la persistance.');
 }
 
+// ══ CORRECTION BUG 2 : saveCfg sauvegarde avec equipe pour séparer VN et VO ══
 async function saveCfg(){
   if(role!=='directeur'){toast('Réservé au directeur');return}
   const newNames=[];
@@ -1437,252 +1245,160 @@ async function saveCfg(){
     const nm=el?el.value.trim():'';
     newNames.push(nm||VS[i]);
   }
-  // Mise à jour locale immédiate
   const oldVS=[...VS];
   VS=newNames;
-  // Migrer les données S[] vers nouveaux noms
   const newS={};const newOBJ={};
   oldVS.forEach((old,i)=>{
     const nv=newNames[i];
     newS[nv]=S[old]||{contacts:[],affaires:[],memo:[],counter:0};
-    if(newS[nv].contacts) newS[nv].contacts.forEach(c=>{c.vendeur=nv});
-    if(newS[nv].affaires) newS[nv].affaires.forEach(a=>{a.vendeur=nv});
-    if(newS[nv].memo) newS[nv].memo.forEach(m=>{m.vendeur=nv});
+    if(newS[nv].contacts)newS[nv].contacts.forEach(c=>{c.vendeur=nv});
+    if(newS[nv].affaires)newS[nv].affaires.forEach(a=>{a.vendeur=nv});
+    if(newS[nv].memo)newS[nv].memo.forEach(m=>{m.vendeur=nv});
     newOBJ[nv]=OBJ[old]||{objectif_commandes:20,objectif_contacts:50};
   });
   S=newS;OBJ=newOBJ;
-  pg=VS[0];
-  renderAll();
-  toast('Noms enregistrés ✓');
-  // Sync Supabase arrière-plan
-  let dbOk=true;
+  pg='__cfg__';
+  renderAll();toast('Vendeurs enregistrés ✓ — qualifiez maintenant les services ci-dessous');
   for(let i=0;i<newNames.length;i++){
-    const res=await db.from('vendeurs_config').upsert({slot:i+1,nom:newNames[i],equipe:currentEquipe},{onConflict:'slot,equipe'});
-    if(res.error){console.warn('vendeurs_config:',res.error.message);dbOk=false;}
+    try{
+      var ex=await db.from('vendeurs_config').select('id').eq('slot',i+1).eq('equipe',currentEquipe).limit(1);
+      if(ex.data&&ex.data.length>0){
+        await db.from('vendeurs_config').update({nom:newNames[i]}).eq('slot',i+1).eq('equipe',currentEquipe);
+      } else {
+        await db.from('vendeurs_config').insert({slot:i+1,nom:newNames[i],equipe:currentEquipe});
+      }
+    }catch(e){console.warn('vendeurs_config save:',e.message);}
   }
-  if(!dbOk) toast('Noms sauvegardés localement. Lancez le SQL pour la persistance.');
+  setTimeout(loadQualifBadges,300);
 }
 
 function showReset(){
   const b=document.getElementById('reset-box');
   b.style.display=b.style.display==='none'?'block':'none';
 }
-
 async function sendReset(){
   const login=document.getElementById('rst-login').value.trim().toLowerCase();
   const pass=document.getElementById('rst-pass').value.trim();
   if(!login||!pass){alert('Identifiant et nouveau mot de passe requis.');return}
   if(pass.length<4){alert('Mot de passe trop court (4 caractères minimum).');return}
-  // Vérifier que le login existe — d'abord BUILTIN, puis Supabase
   const existsLocal=!!BUILTIN[login];
   let existsDB=false;
-  try{
-    const{data,error}=await db.from('utilisateurs').select('id').eq('login',login).limit(1);
-    if(!error&&data&&data.length>0) existsDB=true;
-  }catch(e){ console.warn('Supabase check:',e); }
-  if(!existsLocal&&!existsDB){
-    alert('Identifiant introuvable. Vérifiez votre saisie ou contactez votre administrateur.');return;
-  }
-  // Enregistrer la demande
-  try{
-    await db.from('reset_demandes').insert({login,nouveau_mdp:pass,statut:'en_attente'});
-  }catch(e){ console.warn('Demande stockée localement uniquement'); }
+  try{const{data,error}=await db.from('utilisateurs').select('id').eq('login',login).limit(1);if(!error&&data&&data.length>0)existsDB=true;}catch(e){}
+  if(!existsLocal&&!existsDB){alert('Identifiant introuvable.');return;}
+  try{await db.from('reset_demandes').insert({login,nouveau_mdp:pass,statut:'en_attente'});}catch(e){}
   document.getElementById('rst-ok').style.display='block';
   setTimeout(()=>{document.getElementById('rst-ok').style.display='none';document.getElementById('reset-box').style.display='none';},4000);
 }
 
-// ── PAGE MOT DE PASSE (directeur) ──
 function rPwd(){
   if(role!=='directeur')return locked('Accès réservé au Directeur');
-  return`<div class="sec">
-    <div class="sec-h dir"><div class="sec-title"><div class="sic">🔑</div>Gestion des mots de passe</div></div>
-    <div style="padding:18px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div>
-          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Modifier un mot de passe</div>
-          <div class="cfg-fields" style="gap:10px">
-            <div class="cfg-f"><div class="cfg-l">Identifiant</div>
-              <select class="cfg-i" id="pwd-login" style="font-family:'DM Sans',sans-serif">
-                ${Object.keys(BUILTIN).map(k=>`<option value="${k}">${k}</option>`).join('')}
-              </select>
-            </div>
-            <div class="cfg-f"><div class="cfg-l">Nouveau mot de passe</div><input type="text" class="cfg-i" id="pwd-new" placeholder="Nouveau mot de passe"></div>
-            <button class="btn-ok" onclick="changePwd()" style="margin-top:4px;width:100%">Valider le changement</button>
+  return`<div class="sec"><div class="sec-h dir"><div class="sec-title"><div class="sic">🔑</div>Gestion des mots de passe</div></div>
+    <div style="padding:18px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Modifier un mot de passe</div>
+        <div class="cfg-fields" style="gap:10px">
+          <div class="cfg-f"><div class="cfg-l">Identifiant</div>
+            <select class="cfg-i" id="pwd-login" style="font-family:'DM Sans',sans-serif">
+              ${Object.keys(BUILTIN).map(k=>`<option value="${k}">${k}</option>`).join('')}
+            </select>
           </div>
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Demandes de réinitialisation</div>
-          <div id="reset-list">
-            <div style="color:var(--text3);font-size:13px">Chargement...</div>
-          </div>
-          <button onclick="loadResets()" style="margin-top:10px;background:none;border:1px solid var(--border2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif">Actualiser</button>
+          <div class="cfg-f"><div class="cfg-l">Nouveau mot de passe</div><input type="text" class="cfg-i" id="pwd-new" placeholder="Nouveau mot de passe"></div>
+          <button class="btn-ok" onclick="changePwd()" style="margin-top:4px;width:100%">Valider le changement</button>
         </div>
       </div>
-    </div>
-  </div>`;
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">Demandes de réinitialisation</div>
+        <div id="reset-list"><div style="color:var(--text3);font-size:13px">Chargement...</div></div>
+        <button onclick="loadResets()" style="margin-top:10px;background:none;border:1px solid var(--border2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif">Actualiser</button>
+      </div>
+    </div></div></div>`;
 }
-
 async function changePwd(){
   const login=document.getElementById('pwd-login')?.value;
   const pass=document.getElementById('pwd-new')?.value.trim();
   if(!login||!pass){toast('Identifiant et mot de passe requis');return}
   if(pass.length<4){toast('Mot de passe trop court (4 caractères min.)');return}
-  // Update BUILTIN local
-  if(BUILTIN[login]) BUILTIN[login].pass=pass;
-  // Update Supabase
+  if(BUILTIN[login])BUILTIN[login].pass=pass;
   const{error}=await db.from('utilisateurs').update({mot_de_passe:pass}).eq('login',login);
-  if(error) toast('⚠️ Erreur Supabase — changement local uniquement');
+  if(error)toast('⚠️ Erreur Supabase — changement local uniquement');
   else toast(`Mot de passe de "${login}" modifié ✓`);
   document.getElementById('pwd-new').value='';
 }
-
 async function loadResets(){
-  const el=document.getElementById('reset-list');
-  if(!el)return;
+  const el=document.getElementById('reset-list');if(!el)return;
   try{
     const{data,error}=await db.from('reset_demandes').select('*').eq('statut','en_attente').order('created_at',{ascending:false});
-    if(error||!data||data.length===0){
-      el.innerHTML='<div style="color:var(--text3);font-size:13px">Aucune demande en attente</div>';return;
-    }
-    el.innerHTML=data.map(d=>`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:6px;margin-bottom:6px;border:1px solid var(--border)">
-        <div>
-          <div style="font-weight:500;font-size:13px">${d.login}</div>
-          <div style="font-size:11px;color:var(--text3)">Nouveau mdp : <code style="background:#f0f4ff;padding:1px 5px;border-radius:3px">${d.nouveau_mdp}</code></div>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button onclick="validerReset(${d.id},'${d.login}','${d.nouveau_mdp}')" style="background:#dcfce7;color:#15803d;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Valider</button>
-          <button onclick="refuserReset(${d.id})" style="background:var(--red2);color:#b91c1c;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Refuser</button>
-        </div>
-      </div>`).join('');
-  }catch(e){el.innerHTML='<div style="color:var(--text3);font-size:12px">Table reset_demandes manquante — lancez le SQL Supabase</div>'}
+    if(error||!data||data.length===0){el.innerHTML='<div style="color:var(--text3);font-size:13px">Aucune demande en attente</div>';return;}
+    el.innerHTML=data.map(d=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:6px;margin-bottom:6px;border:1px solid var(--border)"><div><div style="font-weight:500;font-size:13px">${d.login}</div><div style="font-size:11px;color:var(--text3)">Nouveau mdp : <code style="background:#f0f4ff;padding:1px 5px;border-radius:3px">${d.nouveau_mdp}</code></div></div><div style="display:flex;gap:6px"><button onclick="validerReset(${d.id},'${d.login}','${d.nouveau_mdp}')" style="background:#dcfce7;color:#15803d;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Valider</button><button onclick="refuserReset(${d.id})" style="background:var(--red2);color:#b91c1c;border:none;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Refuser</button></div></div>`).join('');
+  }catch(e){el.innerHTML='<div style="color:var(--text3);font-size:12px">Table reset_demandes manquante</div>';}
 }
-
 async function validerReset(id,login,pass){
   if(BUILTIN[login])BUILTIN[login].pass=pass;
   await db.from('utilisateurs').update({mot_de_passe:pass}).eq('login',login).catch(()=>{});
   await db.from('reset_demandes').update({statut:'validé'}).eq('id',id).catch(()=>{});
-  toast(`Mot de passe de "${login}" mis à jour ✓`);
-  loadResets();
+  toast(`Mot de passe de "${login}" mis à jour ✓`);loadResets();
 }
-
 async function refuserReset(id){
   await db.from('reset_demandes').update({statut:'refusé'}).eq('id',id).catch(()=>{});
-  toast('Demande refusée');
-  loadResets();
+  toast('Demande refusée');loadResets();
 }
 
-// ══ LEADS FUNCTIONS ══
-
-function buildLeadsBlock(v, vk, mois){
-  var lot1 = (leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot1) ? leadsData[v][mois].lot1 : {injectes:0,traites:0,maj_par:null,maj_at:null};
-  var lot2 = (leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot2) ? leadsData[v][mois].lot2 : {injectes:0,traites:0,maj_par:null,maj_at:null};
-  var isChef = canAdmin();
-
-  var l1pct = lot1.injectes>0 ? Math.min(100,Math.round(lot1.traites/lot1.injectes*100)) : 0;
-  var l1rest = Math.max(0, lot1.injectes-lot1.traites);
-  var l2pct = lot2.injectes>0 ? Math.min(100,Math.round(lot2.traites/lot2.injectes*100)) : 0;
-  var l2rest = Math.max(0, lot2.injectes-lot2.traites);
-  var totalInj = lot1.injectes+lot2.injectes;
-  var totalTr  = lot1.traites+lot2.traites;
-  var totalPct = totalInj>0 ? Math.min(100,Math.round(totalTr/totalInj*100)) : 0;
-  var ac = totalPct<30 ? '#b91c1c' : totalPct<60 ? '#c2410c' : '#15803d';
-
-  function rc(n){ return n===0?'ok':n<=3?'warn':'danger'; }
-  function majStr(at,par){
-    if(!at||!par) return '';
-    var d=new Date(at);
-    return '<div class="leads-maj"><strong>'+par+'</strong><br>'+d.toLocaleDateString('fr-FR')+' a '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+'</div>';
-  }
+// ══ LEADS ══
+function buildLeadsBlock(v,vk,mois){
+  var lot1=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot1)?leadsData[v][mois].lot1:{injectes:0,traites:0,maj_par:null,maj_at:null};
+  var lot2=(leadsData[v]&&leadsData[v][mois]&&leadsData[v][mois].lot2)?leadsData[v][mois].lot2:{injectes:0,traites:0,maj_par:null,maj_at:null};
+  var isChef=canAdmin();
+  var l1pct=lot1.injectes>0?Math.min(100,Math.round(lot1.traites/lot1.injectes*100)):0;
+  var l1rest=Math.max(0,lot1.injectes-lot1.traites);
+  var l2pct=lot2.injectes>0?Math.min(100,Math.round(lot2.traites/lot2.injectes*100)):0;
+  var l2rest=Math.max(0,lot2.injectes-lot2.traites);
+  var totalInj=lot1.injectes+lot2.injectes;var totalTr=lot1.traites+lot2.traites;
+  var totalPct=totalInj>0?Math.min(100,Math.round(totalTr/totalInj*100)):0;
+  var ac=totalPct<30?'#b91c1c':totalPct<60?'#c2410c':'#15803d';
+  function rc(n){return n===0?'ok':n<=3?'warn':'danger';}
+  function majStr(at,par){if(!at||!par)return'';var d=new Date(at);return'<div class="leads-maj"><strong>'+par+'</strong><br>'+d.toLocaleDateString('fr-FR')+' a '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+'</div>';}
   function oneLot(num,lot,pct,rest,col){
-    var titre = num===1 ? '&#128203; Lot 1 &mdash; Leads initiaux' : '&#43; Lot 2 &mdash; Leads suppl.';
-    var injHtml = isChef
-      ? '<input type="number" class="leads-chef-input" id="linj'+num+'-'+vk+'" value="'+lot.injectes+'" min="0" style="width:52px">'
-      : '<span style="font-size:20px;font-weight:700;font-family:DM Mono,monospace;color:var(--text2)">'+lot.injectes+'</span>';
-    var injBtn = isChef
-      ? '<button onclick="saveLeadInj(\''+v+'\','+num+',\''+vk+'\')" style="margin-top:8px;width:100%;padding:5px;background:'+col+';color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">&#128137; Injecter lot '+num+'</button>'
-      : '';
-    return '<div class="leads-lot lot'+num+'">'
-      +'<div class="leads-lot-title">'+titre+'</div>'
-      +'<div class="leads-numbers">'
-      +'<div class="leads-num-block">'+injHtml+'<div class="leads-num-lbl">Inject&eacute;s</div></div>'
-      +'<div class="leads-sep"></div>'
-      +'<div class="leads-num-block"><div class="leads-num treated">'+lot.traites+'</div><div class="leads-num-lbl">Trait&eacute;s</div></div>'
-      +'<div class="leads-sep"></div>'
-      +'<div class="leads-num-block"><div class="leads-num remaining '+rc(rest)+'">'+rest+'</div><div class="leads-num-lbl">Restants</div></div>'
-      +'</div>'
-      +'<div class="leads-progress"><div class="leads-progress-fill" style="width:'+pct+'%"></div></div>'
-      +'<div class="leads-pct">'+pct+'% trait&eacute;s</div>'
-      +'<div class="leads-input-row">'
-      +'<span style="font-size:11px;color:var(--text3);white-space:nowrap">Trait&eacute;s:</span>'
-      +'<input type="number" class="leads-input" id="ltr'+num+'-'+vk+'" value="'+lot.traites+'" min="0" max="'+(lot.injectes||999)+'">'
-      +'<button class="leads-btn-ok" onclick="saveLead(\''+v+'\','+num+',\''+vk+'\')">&#10003;</button>'
-      +majStr(lot.maj_at,lot.maj_par)
-      +'</div>'
-      +injBtn
-      +'</div>';
+    var titre=num===1?'&#128203; Lot 1 &mdash; Leads initiaux':'&#43; Lot 2 &mdash; Leads suppl.';
+    var injHtml=isChef?'<input type="number" class="leads-chef-input" id="linj'+num+'-'+vk+'" value="'+lot.injectes+'" min="0" style="width:52px">':`<span style="font-size:20px;font-weight:700;font-family:DM Mono,monospace;color:var(--text2)">${lot.injectes}</span>`;
+    var injBtn=isChef?'<button onclick="saveLeadInj(\''+v+'\','+num+',\''+vk+'\')" style="margin-top:8px;width:100%;padding:5px;background:'+col+';color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">&#128137; Injecter lot '+num+'</button>':'';
+    return'<div class="leads-lot lot'+num+'"><div class="leads-lot-title">'+titre+'</div><div class="leads-numbers"><div class="leads-num-block">'+injHtml+'<div class="leads-num-lbl">Inject&eacute;s</div></div><div class="leads-sep"></div><div class="leads-num-block"><div class="leads-num treated">'+lot.traites+'</div><div class="leads-num-lbl">Trait&eacute;s</div></div><div class="leads-sep"></div><div class="leads-num-block"><div class="leads-num remaining '+rc(rest)+'">'+rest+'</div><div class="leads-num-lbl">Restants</div></div></div><div class="leads-progress"><div class="leads-progress-fill" style="width:'+pct+'%"></div></div><div class="leads-pct">'+pct+'% trait&eacute;s</div><div class="leads-input-row"><span style="font-size:11px;color:var(--text3);white-space:nowrap">Trait&eacute;s:</span><input type="number" class="leads-input" id="ltr'+num+'-'+vk+'" value="'+lot.traites+'" min="0" max="'+(lot.injectes||999)+'"><button class="leads-btn-ok" onclick="saveLead(\''+v+'\','+num+',\''+vk+'\')">&#10003;</button>'+majStr(lot.maj_at,lot.maj_par)+'</div>'+injBtn+'</div>';
   }
-
-  return '<div class="sec" style="border:2px solid '+ac+';box-shadow:0 0 0 3px '+ac+'22;margin-bottom:14px">'
-    +'<div style="background:'+ac+';padding:10px 18px;display:flex;align-items:center;justify-content:space-between">'
-    +'<div style="font-size:13px;font-weight:600;color:#fff">&#127919; TRAITEMENT LEADS &mdash; '+mois+'</div>'
-    +'<div style="display:flex;gap:12px">'
-    +'<div style="text-align:right"><div style="font-size:20px;font-weight:700;color:#fff;font-family:DM Mono,monospace">'+totalPct+'%</div><div style="font-size:9px;color:rgba(255,255,255,.7)">avancement</div></div>'
-    +'<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:#fff;font-family:DM Mono,monospace">'+totalTr+'/'+totalInj+'</div><div style="font-size:9px;color:rgba(255,255,255,.7)">trait&eacute;s/inject&eacute;s</div></div>'
-    +'</div></div>'
-    +'<div class="leads-wrap">'
-    +oneLot(1,lot1,l1pct,l1rest,'var(--navy2)')
-    +oneLot(2,lot2,l2pct,l2rest,'var(--orange)')
-    +'</div></div>';
+  return'<div class="sec" style="border:2px solid '+ac+';box-shadow:0 0 0 3px '+ac+'22;margin-bottom:14px"><div style="background:'+ac+';padding:10px 18px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:13px;font-weight:600;color:#fff">&#127919; TRAITEMENT LEADS &mdash; '+mois+'</div><div style="display:flex;gap:12px"><div style="text-align:right"><div style="font-size:20px;font-weight:700;color:#fff;font-family:DM Mono,monospace">'+totalPct+'%</div><div style="font-size:9px;color:rgba(255,255,255,.7)">avancement</div></div><div style="text-align:right"><div style="font-size:14px;font-weight:700;color:#fff;font-family:DM Mono,monospace">'+totalTr+'/'+totalInj+'</div><div style="font-size:9px;color:rgba(255,255,255,.7)">trait&eacute;s/inject&eacute;s</div></div></div></div><div class="leads-wrap">'+oneLot(1,lot1,l1pct,l1rest,'var(--navy2)')+oneLot(2,lot2,l2pct,l2rest,'var(--orange)')+'</div></div>';
 }
 
 async function saveLead(v,lot,vk){
-  var input=document.getElementById('ltr'+lot+'-'+vk);
-  if(!input)return;
+  var input=document.getElementById('ltr'+lot+'-'+vk);if(!input)return;
   var traites=parseInt(input.value)||0;
   var mois=new Date().toISOString().slice(0,7);
-  var majPar=userVendeurNom||userLogin;
-  var majAt=new Date().toISOString();
-  if(!leadsData[v])leadsData[v]={};
-  if(!leadsData[v][mois])leadsData[v][mois]={};
+  var majPar=userVendeurNom||userLogin;var majAt=new Date().toISOString();
+  if(!leadsData[v])leadsData[v]={};if(!leadsData[v][mois])leadsData[v][mois]={};
   if(!leadsData[v][mois]['lot'+lot])leadsData[v][mois]['lot'+lot]={injectes:0,traites:0,maj_par:null,maj_at:null};
-  leadsData[v][mois]['lot'+lot].traites=traites;
-  leadsData[v][mois]['lot'+lot].maj_par=majPar;
-  leadsData[v][mois]['lot'+lot].maj_at=majAt;
+  leadsData[v][mois]['lot'+lot].traites=traites;leadsData[v][mois]['lot'+lot].maj_par=majPar;leadsData[v][mois]['lot'+lot].maj_at=majAt;
   renderAll();
   try{
     var injectes=leadsData[v][mois]['lot'+lot].injectes||0;
     var ex=await db.from('leads').select('id').eq('vendeur',v).eq('mois',mois).eq('lot',lot).limit(1);
-    if(ex.data&&ex.data.length>0){
-      await db.from('leads').update({traites:traites,maj_par:majPar,maj_at:majAt}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);
-    } else {
-      await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:majPar,maj_at:majAt,equipe:currentEquipe});
-    }
+    if(ex.data&&ex.data.length>0){await db.from('leads').update({traites:traites,maj_par:majPar,maj_at:majAt}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);}
+    else{await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:majPar,maj_at:majAt,equipe:currentEquipe});}
     toast('Traitement mis a jour');
-  }catch(e){console.error('saveLead:',e.message||e);toast('Erreur sauvegarde');}
+  }catch(e){toast('Erreur sauvegarde');}
 }
 
 async function saveLeadInj(v,lot,vk){
   if(!canAdmin()){toast('Reserve au chef');return;}
-  var input=document.getElementById('linj'+lot+'-'+vk);
-  if(!input)return;
+  var input=document.getElementById('linj'+lot+'-'+vk);if(!input)return;
   var injectes=parseInt(input.value)||0;
   var mois=new Date().toISOString().slice(0,7);
-  if(!leadsData[v])leadsData[v]={};
-  if(!leadsData[v][mois])leadsData[v][mois]={};
+  if(!leadsData[v])leadsData[v]={};if(!leadsData[v][mois])leadsData[v][mois]={};
   if(!leadsData[v][mois]['lot'+lot])leadsData[v][mois]['lot'+lot]={injectes:0,traites:0,maj_par:null,maj_at:null};
-  leadsData[v][mois]['lot'+lot].injectes=injectes;
-  renderAll();
+  leadsData[v][mois]['lot'+lot].injectes=injectes;renderAll();
   try{
     var traites=leadsData[v][mois]['lot'+lot].traites||0;
     var ex=await db.from('leads').select('id').eq('vendeur',v).eq('mois',mois).eq('lot',lot).limit(1);
-    if(ex.data&&ex.data.length>0){
-      await db.from('leads').update({injectes:injectes}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);
-    } else {
-      await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:null,maj_at:null});
-    }
+    if(ex.data&&ex.data.length>0){await db.from('leads').update({injectes:injectes}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);}
+    else{await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:null,maj_at:null,equipe:currentEquipe});}
     toast('Leads injectes: '+injectes);
-  }catch(e){console.error('saveLeadInj:',e.message||e);toast('Erreur injection');}
+  }catch(e){toast('Erreur injection');}
 }
 
 function rLeadsRecap(){
@@ -1695,221 +1411,95 @@ function rLeadsRecap(){
     var vk=v.replace(/[^a-zA-Z0-9]/g,'_');
     var l1pct=lot1.injectes>0?Math.min(100,Math.round(lot1.traites/lot1.injectes*100)):0;
     var l2pct=lot2.injectes>0?Math.min(100,Math.round(lot2.traites/lot2.injectes*100)):0;
-    var totalInj=lot1.injectes+lot2.injectes;
-    var totalTr=lot1.traites+lot2.traites;
+    var totalInj=lot1.injectes+lot2.injectes;var totalTr=lot1.traites+lot2.traites;
     var totalPct=totalInj>0?Math.min(100,Math.round(totalTr/totalInj*100)):0;
     var ac=totalPct<30?'#fecaca':totalPct<60?'#fed7aa':'#bbf7d0';
     var tc=totalPct<30?'#b91c1c':totalPct<60?'#c2410c':'#15803d';
     var majStr='&mdash;';
-    if(lot1.maj_par){
-      var d=new Date(lot1.maj_at);
-      majStr='<strong>'+lot1.maj_par+'</strong><br>'+d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-    }
-    rows+='<tr>'
-      +'<td style="text-align:left;font-weight:600"><div style="display:flex;align-items:center;gap:8px"><div class="av" style="width:24px;height:24px;font-size:9px">'+ini(v)+'</div>'+v+'</div></td>'
+    if(lot1.maj_par){var d=new Date(lot1.maj_at);majStr='<strong>'+lot1.maj_par+'</strong><br>'+d.toLocaleDateString('fr-FR')+' '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}
+    rows+='<tr><td style="text-align:left;font-weight:600"><div style="display:flex;align-items:center;gap:8px"><div class="av" style="width:24px;height:24px;font-size:9px">'+ini(v)+'</div>'+v+'</div></td>'
       +'<td><input type="number" class="leads-chef-input" id="rl1inj-'+vk+'" value="'+lot1.injectes+'" min="0" style="width:48px"><button onclick="saveRecapInj(\''+v+'\',1,\'rl1inj-'+vk+'\')" style="padding:3px 7px;background:var(--navy2);color:#fff;border:none;border-radius:4px;font-size:10px;cursor:pointer;margin-left:4px">OK</button></td>'
       +'<td><div>'+lot1.traites+'</div><div class="leads-recap-pct-bar"><div class="leads-recap-pct-fill fill-lot1" style="width:'+l1pct+'%"></div></div><div style="font-size:9px;color:var(--navy2)">'+l1pct+'%</div></td>'
       +'<td><input type="number" class="leads-chef-input" id="rl2inj-'+vk+'" value="'+lot2.injectes+'" min="0" style="width:48px;border-color:var(--orange);background:#fff7ed"><button onclick="saveRecapInj(\''+v+'\',2,\'rl2inj-'+vk+'\')" style="padding:3px 7px;background:var(--orange);color:#fff;border:none;border-radius:4px;font-size:10px;cursor:pointer;margin-left:4px">OK</button></td>'
       +'<td><div>'+lot2.traites+'</div><div class="leads-recap-pct-bar"><div class="leads-recap-pct-fill fill-lot2" style="width:'+l2pct+'%"></div></div><div style="font-size:9px;color:var(--orange)">'+l2pct+'%</div></td>'
       +'<td style="background:'+ac+'"><div style="font-size:16px;font-weight:700;font-family:DM Mono,monospace;color:'+tc+'">'+totalPct+'%</div><div style="font-size:10px;color:'+tc+'">'+totalTr+'/'+totalInj+'</div></td>'
-      +'<td style="font-size:11px;color:var(--text3)">'+majStr+'</td>'
-      +'</tr>';
+      +'<td style="font-size:11px;color:var(--text3)">'+majStr+'</td></tr>';
   });
-  return '<div class="sec"><div class="sec-h" style="background:linear-gradient(135deg,var(--navy),#1e3a8a)">'
-    +'<div class="sec-title"><div class="sic">L</div>Recap Leads &mdash; '+mois+'</div></div>'
-    +'<div class="leads-recap"><table class="leads-recap-table"><thead><tr>'
-    +'<th class="th-left">Vendeur</th><th>Lot 1 inject&eacute;s</th><th>Lot 1 trait&eacute;s</th>'
-    +'<th>Lot 2 inject&eacute;s</th><th>Lot 2 trait&eacute;s</th><th>Avancement</th><th>Derni&egrave;re MAJ</th>'
-    +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  return'<div class="sec"><div class="sec-h" style="background:linear-gradient(135deg,var(--navy),#1e3a8a)"><div class="sec-title"><div class="sic">L</div>Recap Leads &mdash; '+mois+'</div></div><div class="leads-recap"><table class="leads-recap-table"><thead><tr><th class="th-left">Vendeur</th><th>Lot 1 inject&eacute;s</th><th>Lot 1 trait&eacute;s</th><th>Lot 2 inject&eacute;s</th><th>Lot 2 trait&eacute;s</th><th>Avancement</th><th>Derni&egrave;re MAJ</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
 
 async function saveRecapInj(v,lot,inputId){
   if(!canAdmin())return;
-  var el=document.getElementById(inputId);
-  if(!el)return;
+  var el=document.getElementById(inputId);if(!el)return;
   var injectes=parseInt(el.value)||0;
   var mois=new Date().toISOString().slice(0,7);
-  if(!leadsData[v])leadsData[v]={};
-  if(!leadsData[v][mois])leadsData[v][mois]={};
+  if(!leadsData[v])leadsData[v]={};if(!leadsData[v][mois])leadsData[v][mois]={};
   if(!leadsData[v][mois]['lot'+lot])leadsData[v][mois]['lot'+lot]={injectes:0,traites:0,maj_par:null,maj_at:null};
-  leadsData[v][mois]['lot'+lot].injectes=injectes;
-  renderAll();
+  leadsData[v][mois]['lot'+lot].injectes=injectes;renderAll();
   try{
     var traites=leadsData[v][mois]['lot'+lot].traites||0;
     var ex=await db.from('leads').select('id').eq('vendeur',v).eq('mois',mois).eq('lot',lot).limit(1);
-    if(ex.data&&ex.data.length>0){
-      await db.from('leads').update({injectes:injectes}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);
-    } else {
-      await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:null,maj_at:null});
-    }
+    if(ex.data&&ex.data.length>0){await db.from('leads').update({injectes:injectes}).eq('vendeur',v).eq('mois',mois).eq('lot',lot);}
+    else{await db.from('leads').insert({vendeur:v,mois:mois,lot:lot,injectes:injectes,traites:traites,maj_par:null,maj_at:null,equipe:currentEquipe});}
     toast('Lot '+lot+' : '+injectes+' leads injectes');
-  }catch(e){console.error(e);toast('Erreur');}
+  }catch(e){toast('Erreur');}
 }
-
-
 
 // ══ BILAN ANNUEL ══
 var MOIS_NOMS=['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
-
 function getBilanMois(){
-  var moisSet={};
-  var now=new Date();
-  for(var m=0;m<12;m++){
-    var d=new Date(now.getFullYear(),m,1);
-    var k=d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1);
-    moisSet[k]=1;
-  }
+  var moisSet={};var now=new Date();
+  for(var m=0;m<12;m++){var d=new Date(now.getFullYear(),m,1);var k=d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1);moisSet[k]=1;}
   GM.forEach(function(m){if(m.date)moisSet[m.date.slice(0,7)]=1;});
-  Object.values(bilanDB).forEach(function(vd){
-    Object.keys(vd).forEach(function(mo){
-      // Filtrer les mois invalides - doit être YYYY-MM avec 7 chars
-      if(/^\d{4}-\d{2}$/.test(mo)) moisSet[mo]=1;
-    });
-  });
+  Object.values(bilanDB).forEach(function(vd){Object.keys(vd).forEach(function(mo){if(/^\d{4}-\d{2}$/.test(mo))moisSet[mo]=1;});});
   return Object.keys(moisSet).filter(function(m){return /^\d{4}-\d{2}$/.test(m);}).sort();
 }
-
 function getBilanData(){
   var data={};
-  VS.forEach(function(v){
-    data[v]={};
-    if(bilanDB[v]){
-      Object.entries(bilanDB[v]).forEach(function(e){
-        // Ignorer les mois mal formatés
-        if(/^\d{4}-\d{2}$/.test(e[0])) data[v][e[0]]={re:e[1].re||0,fi:e[1].fi||0};
-      });
-    }
-  });
-  GM.forEach(function(m){
-    if(!m.date||!m.vendeur)return;
-    var mo=m.date.slice(0,7);
-    var v=m.vendeur;
-    if(!data[v])data[v]={};
-    if(!data[v][mo])data[v][mo]={re:0,fi:0};
-    data[v][mo].re++;
-    if((m.opts||[]).includes('Financement'))data[v][mo].fi++;
-  });
+  VS.forEach(function(v){data[v]={};if(bilanDB[v]){Object.entries(bilanDB[v]).forEach(function(e){if(/^\d{4}-\d{2}$/.test(e[0]))data[v][e[0]]={re:e[1].re||0,fi:e[1].fi||0};});}});
+  GM.forEach(function(m){if(!m.date||!m.vendeur)return;var mo=m.date.slice(0,7);var v=m.vendeur;if(!data[v])data[v]={};if(!data[v][mo])data[v][mo]={re:0,fi:0};data[v][mo].re++;if((m.opts||[]).includes('Financement'))data[v][mo].fi++;});
   return data;
 }
-
 function rBilan(){
-  var moisList=getBilanMois();
-  var bilanData=getBilanData();
-  var annee=new Date().getFullYear();
-  var moisCourant=new Date().toISOString().slice(0,7);
-
-  var cumuls=VS.map(function(v){
-    var re=0,fi=0;
-    Object.values(bilanData[v]||{}).forEach(function(d){re+=d.re;fi+=d.fi;});
-    return{v:v,re:re,fi:fi};
-  }).sort(function(a,b){return b.re-a.re;});
-
-  var thMois=moisList.map(function(m){
-    var parts=m.split('-');
-    var nom=MOIS_NOMS[parseInt(parts[1])-1];
-    var isCur=m===moisCourant;
-    return '<th style="'+(isCur?'background:#0f4c81;box-shadow:inset 0 -3px 0 var(--gold)':'')+'">'+nom+'<br><span style="font-size:8px;opacity:.6">'+parts[0]+'</span></th>';
-  }).join('');
-
+  var moisList=getBilanMois();var bilanData=getBilanData();
+  var annee=new Date().getFullYear();var moisCourant=new Date().toISOString().slice(0,7);
+  var cumuls=VS.map(function(v){var re=0,fi=0;Object.values(bilanData[v]||{}).forEach(function(d){re+=d.re;fi+=d.fi;});return{v:v,re:re,fi:fi};}).sort(function(a,b){return b.re-a.re;});
+  var thMois=moisList.map(function(m){var parts=m.split('-');var nom=MOIS_NOMS[parseInt(parts[1])-1];var isCur=m===moisCourant;return'<th style="'+(isCur?'background:#0f4c81;box-shadow:inset 0 -3px 0 var(--gold)':'')+'">'+nom+'<br><span style="font-size:8px;opacity:.6">'+parts[0]+'</span></th>';}).join('');
   var rows=cumuls.map(function(cv,rankIdx){
-    var v=cv.v;
-    var rank=rankIdx+1;
+    var v=cv.v;var rank=rankIdx+1;
     var rankBadge=rank===1?'<span class="bilan-rank br1">1</span>':rank===2?'<span class="bilan-rank br2">2</span>':rank===3?'<span class="bilan-rank br3">3</span>':'<span style="font-size:10px;color:var(--text3);margin-left:4px">#'+rank+'</span>';
-    var cellsMois=moisList.map(function(m){
-      var d=(bilanData[v]&&bilanData[v][m])||{re:0,fi:0};
-      var isCur=m===moisCourant;
-      var bg=isCur?'background:#f0f9ff;':'';
-      var pfin=d.re>0?Math.round(d.fi/d.re*100):0;
-      if(d.re===0)return '<td style="'+bg+'"><span style="color:var(--border2);font-size:11px">&mdash;</span></td>';
-      return '<td style="'+bg+'"><div class="bilan-mois"><div class="bilan-cde">'+d.re+'</div>'+(d.fi>0?'<div class="bilan-sub fin">'+pfin+'% fin.</div>':'<div class="bilan-sub">&mdash;</div>')+'</div></td>';
-    }).join('');
+    var cellsMois=moisList.map(function(m){var d=(bilanData[v]&&bilanData[v][m])||{re:0,fi:0};var isCur=m===moisCourant;var bg=isCur?'background:#f0f9ff;':'';var pfin=d.re>0?Math.round(d.fi/d.re*100):0;if(d.re===0)return'<td style="'+bg+'"><span style="color:var(--border2);font-size:11px">&mdash;</span></td>';return'<td style="'+bg+'"><div class="bilan-mois"><div class="bilan-cde">'+d.re+'</div>'+(d.fi>0?'<div class="bilan-sub fin">'+pfin+'% fin.</div>':'<div class="bilan-sub">&mdash;</div>')+'</div></td>';}).join('');
     var pfinCumul=cv.re>0?Math.round(cv.fi/cv.re*100):0;
-    return '<tr><td class="td-vendeur"><span class="av-sm">'+ini(v)+'</span> '+v+rankBadge+'</td>'+cellsMois+'<td class="bilan-cumul"><div class="bilan-mois"><div class="bilan-cde">'+cv.re+'</div>'+(cv.fi>0?'<div class="bilan-sub fin">'+pfinCumul+'% fin.</div>':'<div class="bilan-sub">&mdash;</div>')+'</div></td></tr>';
+    return'<tr><td class="td-vendeur"><span class="av-sm">'+ini(v)+'</span> '+v+rankBadge+'</td>'+cellsMois+'<td class="bilan-cumul"><div class="bilan-mois"><div class="bilan-cde">'+cv.re+'</div>'+(cv.fi>0?'<div class="bilan-sub fin">'+pfinCumul+'% fin.</div>':'<div class="bilan-sub">&mdash;</div>')+'</div></td></tr>';
   }).join('');
-
-  var totalMois=moisList.map(function(m){
-    var re=0,fi=0;
-    VS.forEach(function(v){var d=(bilanData[v]&&bilanData[v][m])||{re:0,fi:0};re+=d.re;fi+=d.fi;});
-    var pfin=re>0?Math.round(fi/re*100):0;
-    var isCur=m===moisCourant;
-    var bg=isCur?'background:#fffbeb;':'background:#fafbff;';
-    if(re===0)return '<td style="'+bg+'font-weight:600"><span style="color:var(--border2)">&mdash;</span></td>';
-    return '<td style="'+bg+'font-weight:700"><div class="bilan-mois"><div class="bilan-cde" style="color:var(--navy2);font-size:16px">'+re+'</div>'+(fi>0?'<div class="bilan-sub fin">'+pfin+'%</div>':'<div class="bilan-sub">&mdash;</div>')+'</div></td>';
-  }).join('');
-
-  var totalRe=0,totalFi=0;
-  cumuls.forEach(function(cv){totalRe+=cv.re;totalFi+=cv.fi;});
+  var totalMois=moisList.map(function(m){var re=0,fi=0;VS.forEach(function(v){var d=(bilanData[v]&&bilanData[v][m])||{re:0,fi:0};re+=d.re;fi+=d.fi;});var pfin=re>0?Math.round(fi/re*100):0;var isCur=m===moisCourant;var bg=isCur?'background:#fffbeb;':'background:#fafbff;';if(re===0)return'<td style="'+bg+'font-weight:600"><span style="color:var(--border2)">&mdash;</span></td>';return'<td style="'+bg+'font-weight:700"><div class="bilan-mois"><div class="bilan-cde" style="color:var(--navy2);font-size:16px">'+re+'</div>'+(fi>0?'<div class="bilan-sub fin">'+pfin+'%</div>':'<div class="bilan-sub">&mdash;</div>')+'</div></td>';}).join('');
+  var totalRe=0,totalFi=0;cumuls.forEach(function(cv){totalRe+=cv.re;totalFi+=cv.fi;});
   var totalPfin=totalRe>0?Math.round(totalFi/totalRe*100):0;
-
-  return '<div class="sec">'
-    +'<div class="sec-h" style="background:linear-gradient(135deg,var(--navy),#1e3a8a)">'
-    +'<div class="sec-title"><div class="sic">&#128197;</div>Bilan annuel '+annee+'</div>'
-    +'<div style="font-size:11px;color:rgba(255,255,255,.5)">commandes gagnees &bull; % financement par mois</div>'
-    +'</div>'
-    +'<div class="bilan-wrap"><table class="bilan-table"><thead><tr>'
-    +'<th class="th-vendeur">Vendeur</th>'+thMois+'<th class="th-cumul">Cumul '+annee+'</th>'
-    +'</tr></thead><tbody>'+rows
-    +'<tr style="background:#fffbeb;border-top:2px solid var(--gold)">'
-    +'<td class="td-vendeur" style="background:#fffbeb;color:#92400e;font-size:13px"><span style="font-size:14px;margin-right:6px">&Sigma;</span>Total equipe</td>'
-    +totalMois
-    +'<td class="bilan-cumul" style="background:#fffbeb"><div class="bilan-mois"><div class="bilan-cde" style="color:#92400e;font-size:18px">'+totalRe+'</div>'+(totalFi>0?'<div class="bilan-sub fin">'+totalPfin+'% fin.</div>':'')+'</div></td>'
-    +'</tr>'
-    +'</tbody></table></div>'
-    +'<div style="padding:10px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border);display:flex;gap:16px">'
-    +'<span>&#128309; Mois courant surligne</span>'
-    +'<span>&#128202; Chiffre = commandes gagnees</span>'
-    +'<span>&#128153; % fin. = taux financement</span>'
-    +'<span>&#129351;&#129352;&#129353; = classement annuel</span>'
-    +'</div></div>';
+  return'<div class="sec"><div class="sec-h" style="background:linear-gradient(135deg,var(--navy),#1e3a8a)"><div class="sec-title"><div class="sic">&#128197;</div>Bilan annuel '+annee+'</div><div style="font-size:11px;color:rgba(255,255,255,.5)">commandes gagnees &bull; % financement par mois</div></div><div class="bilan-wrap"><table class="bilan-table"><thead><tr><th class="th-vendeur">Vendeur</th>'+thMois+'<th class="th-cumul">Cumul '+annee+'</th></tr></thead><tbody>'+rows+'<tr style="background:#fffbeb;border-top:2px solid var(--gold)"><td class="td-vendeur" style="background:#fffbeb;color:#92400e;font-size:13px"><span style="font-size:14px;margin-right:6px">&Sigma;</span>Total equipe</td>'+totalMois+'<td class="bilan-cumul" style="background:#fffbeb"><div class="bilan-mois"><div class="bilan-cde" style="color:#92400e;font-size:18px">'+totalRe+'</div>'+(totalFi>0?'<div class="bilan-sub fin">'+totalPfin+'% fin.</div>':'')+'</div></td></tr></tbody></table></div><div style="padding:10px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border);display:flex;gap:16px"><span>&#128309; Mois courant surligne</span><span>&#128202; Chiffre = commandes gagnees</span><span>&#128153; % fin. = taux financement</span><span>&#129351;&#129352;&#129353; = classement annuel</span></div></div>';
 }
 
-// ══ RAZ BILAN ANNUEL ══
 async function razFinDeMois(){
   if(!canAdmin()){toast('Reserve au chef ou directeur');return;}
   if(!confirm('RAZ Fin de mois\n\nArchive les resultats dans le Bilan Annuel\net remet les compteurs a zero.\n\nContacts actifs et affaires chaudes conserves.\n\nConfirmer ?'))return;
   toast('Archivage en cours...');
-  var moisCourant=new Date().toISOString().slice(0,7);
   var archive={};
-  GM.forEach(function(m){
-    if(!m.vendeur||!m.date)return;
-    var v=m.vendeur;var mo=m.date.slice(0,7);
-    if(!archive[v])archive[v]={};
-    if(!archive[v][mo])archive[v][mo]={re:0,fi:0};
-    archive[v][mo].re++;
-    if((m.opts||[]).includes('Financement'))archive[v][mo].fi++;
-  });
-  console.log('Archive:',JSON.stringify(archive));
-  Object.entries(archive).forEach(function(e){
-    var v=e[0],moisData=e[1];
-    if(!bilanDB[v])bilanDB[v]={};
-    Object.entries(moisData).forEach(function(f){
-      var mo=f[0],vals=f[1];
-      bilanDB[v][mo]={re:(bilanDB[v][mo]?bilanDB[v][mo].re:0)+vals.re,fi:(bilanDB[v][mo]?bilanDB[v][mo].fi:0)+vals.fi};
-    });
-  });
+  GM.forEach(function(m){if(!m.vendeur||!m.date)return;var v=m.vendeur;var mo=m.date.slice(0,7);if(!archive[v])archive[v]={};if(!archive[v][mo])archive[v][mo]={re:0,fi:0};archive[v][mo].re++;if((m.opts||[]).includes('Financement'))archive[v][mo].fi++;});
+  Object.entries(archive).forEach(function(e){var v=e[0],moisData=e[1];if(!bilanDB[v])bilanDB[v]={};Object.entries(moisData).forEach(function(f){var mo=f[0],vals=f[1];bilanDB[v][mo]={re:(bilanDB[v][mo]?bilanDB[v][mo].re:0)+vals.re,fi:(bilanDB[v][mo]?bilanDB[v][mo].fi:0)+vals.fi};});});
   var errCount=0;
   for(var v of Object.keys(archive)){
     for(var mo of Object.keys(archive[v])){
       var d=bilanDB[v][mo];
       try{
-        var ins=await db.from('bilan_annuel').insert({vendeur:v,mois:mo,commandes:d.re,financements:d.fi});
-        if(ins.error){
-          var upd=await db.from('bilan_annuel').update({commandes:d.re,financements:d.fi}).eq('vendeur',v).eq('mois',mo);
-          if(upd.error){console.error('update failed:',upd.error.message);errCount++;}
-          else{bilanTableExists=true;console.log('Updated:',v,mo);}
-        } else {bilanTableExists=true;console.log('Inserted:',v,mo);}
-      }catch(e){console.error('Exception:',e.message||e);errCount++;}
+        var ins=await db.from('bilan_annuel').insert({vendeur:v,mois:mo,commandes:d.re,financements:d.fi,equipe:currentEquipe});
+        if(ins.error){var upd=await db.from('bilan_annuel').update({commandes:d.re,financements:d.fi}).eq('vendeur',v).eq('mois',mo);if(upd.error)errCount++;}
+        else bilanTableExists=true;
+      }catch(e){errCount++;}
     }
   }
-  VS.forEach(function(v){if(S[v]){S[v].counter=0;S[v].memo=[];S[v].perduAC=[];S[v].perduC=[];}});
-  GM=[];
+  VS.forEach(function(v){if(S[v]){S[v].counter=0;S[v].memo=[];S[v].perduAC=[];S[v].perduC=[];}});GM=[];
   renderAll();
   for(var v of VS){
-    try{
-      var ex=await db.from('compteurs').select('id').eq('vendeur',v).limit(1);
-      if(ex.data&&ex.data.length>0)await db.from('compteurs').update({valeur:0}).eq('vendeur',v);
-      else await db.from('compteurs').insert({vendeur:v,valeur:0});
-    }catch(e){console.warn(e);}
+    try{var ex=await db.from('compteurs').select('id').eq('vendeur',v).limit(1);if(ex.data&&ex.data.length>0)await db.from('compteurs').update({valeur:0}).eq('vendeur',v);else await db.from('compteurs').insert({vendeur:v,valeur:0,equipe:currentEquipe});}catch(e){}
   }
   try{await db.from('memo').delete().neq('id','__x__');}catch(e){}
   renderAll();
@@ -1919,77 +1509,34 @@ async function razFinDeMois(){
 async function razAnnuel(){
   if(!canAdmin()){toast('Reserve au chef ou directeur');return;}
   if(!confirm('RAZ Bilan Annuel\n\nEfface TOUT le bilan annuel.\nA utiliser en debut de nouvelle annee.\n\nConfirmer ?'))return;
-  try{
-    var res=await db.from('bilan_annuel').delete().gte('id',1);
-    if(res.error){console.error(res.error);toast('Erreur: '+res.error.message);return;}
-  }catch(e){console.error(e);}
-  bilanDB={};
-  renderAll();
-  toast('Bilan annuel remis a zero',3000);
+  try{await db.from('bilan_annuel').delete().gte('id',1);}catch(e){}
+  bilanDB={};renderAll();toast('Bilan annuel remis a zero',3000);
 }
 
-
-// ══ MODALE VALIDATION ══
-var _modalV=null, _modalId=null;
-
+var _modalV=null,_modalId=null;
 function openModalG(v,id){
-  var a=S[v]&&S[v].affaires.find(function(x){return x.id===id;});
-  if(!a)return;
-  _modalV=v; _modalId=id;
+  var a=S[v]&&S[v].affaires.find(function(x){return x.id===id;});if(!a)return;
+  _modalV=v;_modalId=id;
   document.getElementById('m-client').value=a.client||'';
   document.getElementById('m-vehicule').value=a.vehicule||'';
   document.getElementById('m-date').value=fmt(a.date);
   document.getElementById('modal-valid').classList.remove('hidden');
   setTimeout(function(){document.getElementById('m-vehicule').focus();},100);
 }
+function closeModal(){document.getElementById('modal-valid').classList.add('hidden');_modalV=null;_modalId=null;}
+async function confirmG(){if(!_modalV||!_modalId)return;var newVeh=document.getElementById('m-vehicule').value.trim();var v=_modalV,id=_modalId;closeModal();await doG(v,id,newVeh);}
 
-function closeModal(){
-  document.getElementById('modal-valid').classList.add('hidden');
-  _modalV=null; _modalId=null;
-}
-
-async function confirmG(){
-  if(!_modalV||!_modalId)return;
-  var newVeh=document.getElementById('m-vehicule').value.trim();
-  var v=_modalV, id=_modalId;
-  closeModal();
-  await doG(v, id, newVeh);
-}
-
-// ══ SWITCH EQUIPE ══
 async function switchEquipe(eq){
-  if(eq === currentEquipe) return;
-  // Vérifier droits : vendeur ne peut pas switcher
-  if(role === 'vendeur'){toast('Accès réservé au chef ou directeur');return;}
-  currentEquipe = eq;
-  // Thème visuel
-  if(eq === 'VO'){
-    document.body.classList.add('theme-vo');
-  } else {
-    document.body.classList.remove('theme-vo');
-  }
-  // Mettre à jour les boutons
-  var btnVN = document.getElementById('btn-vn');
-  var btnVO = document.getElementById('btn-vo');
-  if(btnVN && btnVO){
-    if(eq==='VN'){
-      btnVN.className='eq-btn active-vn';
-      btnVO.className='eq-btn';
-    } else {
-      btnVN.className='eq-btn';
-      btnVO.className='eq-btn active-vo';
-    }
-  }
-  // Label équipe
-  var label = document.getElementById('kb-label-team');
-  if(label) label.textContent = 'Tableau de bord équipe — ' + eq;
-  // Reset pg et recharger données
-  pg = null;
-  await loadData();
-  if(VS.length > 0) pg = VS[0];
-  renderAll();
+  if(eq===currentEquipe)return;
+  if(role==='vendeur'){toast('Accès réservé au chef ou directeur');return;}
+  currentEquipe=eq;
+  if(eq==='VO'){document.body.classList.add('theme-vo');}else{document.body.classList.remove('theme-vo');}
+  var btnVN=document.getElementById('btn-vn');var btnVO=document.getElementById('btn-vo');
+  if(btnVN&&btnVO){if(eq==='VN'){btnVN.className='eq-btn active-vn';btnVO.className='eq-btn';}else{btnVN.className='eq-btn';btnVO.className='eq-btn active-vo';}}
+  var label=document.getElementById('kb-label-team');
+  if(label)label.textContent='Tableau de bord équipe — '+eq;
+  pg=null;await loadData();if(VS.length>0)pg=VS[0];renderAll();
 }
-
 </script>
 </body>
 </html>
