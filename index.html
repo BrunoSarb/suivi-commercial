@@ -844,16 +844,17 @@ async function loadData(){
 }
 
 function tKPI(){
-  let ct=0,ac=0,ob=0,re=0,cs=0,fi=0,loa=0,gr=0,co=0,wa=0,al=0,pl=0,ce=0;
+  let ct=0,ctFiches=0,ac=0,ob=0,re=0,cs=0,fi=0,loa=0,gr=0,co=0,wa=0,al=0,pl=0,ce=0;
   VS.forEach(v=>{
     if(!S[v])return;
-    ct+=S[v].counter;
+    ct+=S[v].counter; // compteur manuel (contacts téléphoniques)
+    // Contacts fichés = contacts actifs + perdus + gagnés (tous passés par le système)
+    ctFiches+=(S[v].contacts||[]).length+(S[v].perduC||[]).length;
     ac+=S[v].affaires.length;
     ob+=OBJ[v]?.objectif_commandes??0;
-    // Filtrer les mémos par currentEquipe pour les stats d'équipe
-    // (un vendeur VN+VO peut avoir des mémos dans les deux équipes)
     const memoEq=S[v].memo.filter(m=>!m.equipe||m.equipe===currentEquipe);
     re+=memoEq.length;
+    ctFiches+=memoEq.length; // les gagnés comptent aussi comme contacts fichés
     memoEq.forEach(m=>{const o=m.opts||[];
       if(o.includes('Cde Stock'))cs++;
       if(o.includes('Financement')||o.includes('Fi Classic'))fi++;
@@ -866,11 +867,13 @@ function tKPI(){
       if(o.includes('C.Ent'))ce++;
     });
   });
-  return{ct,ac,ob,re,cs,fi,loa,gr,co,wa,al,pl,ce};
+  return{ct,ctFiches,ac,ob,re,cs,fi,loa,gr,co,wa,al,pl,ce};
 }
 function vKPI(v){
   const s=S[v]||{contacts:[],affaires:[],memo:[],counter:0};
   let cs=0,fi=0,loa=0,gr=0,co=0,wa=0,al=0,pl=0,ce=0;
+  // Contacts fichés pour taux de transfo
+  const vCtFiches=(s.contacts||[]).length+(s.perduC||[]).length;
   // Filtrer les mémos par currentEquipe — un vendeur VN+VO a des mémos des deux côtés
   // Sur la page VN on n'affiche que ses réalisations VN, sur VO que ses réalisations VO
   const memoEq=s.memo.filter(m=>!m.equipe||m.equipe===currentEquipe);
@@ -885,7 +888,8 @@ function vKPI(v){
     if(o.includes('Pack Liv'))pl++;
     if(o.includes('C.Ent'))ce++;
   });
-  return{ct:s.counter,ac:s.affaires.length,ob:OBJ[v]?.objectif_commandes??0,re:memoEq.length,cs,fi,loa,gr,co,wa,al,pl,ce};
+  const vCtFichesFinal=vCtFiches+memoEq.length;
+  return{ct:s.counter,ctFiches:vCtFichesFinal,ac:s.affaires.length,ob:OBJ[v]?.objectif_commandes??0,re:memoEq.length,cs,fi,loa,gr,co,wa,al,pl,ce};
 }
 function pct(a,b){return b>0?Math.round(a/b*100):0}
 
@@ -937,7 +941,10 @@ function updKPIs(){
   sl('t-wa',k.wa);sl('t-pwa',pct(k.wa,k.re)+'%');
   sl('t-ce',k.ce);sl('t-pce',pct(k.ce,k.re)+'%');
   sl('t-al',k.al);sl('t-pal',pct(k.al,k.re)+'%');
-  sl('t-cs',k.cs);sl('t-pcs',pct(k.cs,k.re)+'%');sl('t-tl',tl+'%');sl('t-tx',pct(k.re,k.ct)+'%');
+  sl('t-cs',k.cs);sl('t-pcs',pct(k.cs,k.re)+'%');sl('t-tl',tl+'%');
+  // Tx transfo = commandes / contacts fichés (actifs + perdus + gagnés)
+  var txTransfo=k.ctFiches>0?Math.round(k.re/k.ctFiches*100):0;
+  sl('t-tx',txTransfo+'%');
   var isV=VS.includes(pg);
   document.getElementById('kb-vend').classList.toggle('on',isV);
   if(isV){
@@ -962,7 +969,10 @@ function updKPIs(){
     sl('v-co',kv.co);sl('v-pco',pct(kv.co,kv.re)+'%');sl('v-wa',kv.wa);sl('v-pwa',pct(kv.wa,kv.re)+'%');
     sl('v-ce',kv.ce);sl('v-pce',pct(kv.ce,kv.re)+'%');
     sl('v-al',kv.al);sl('v-pal',pct(kv.al,kv.re)+'%');sl('v-cs',kv.cs);sl('v-pcs',pct(kv.cs,kv.re)+'%');
-    sl('v-tl',vtl+'%');sl('v-tx',pct(kv.re,kv.ct)+'%');
+    sl('v-tl',vtl+'%');
+    // Tx transfo vendeur = commandes / contacts fichés
+    var vTxTransfo=kv.ctFiches>0?Math.round(kv.re/kv.ctFiches*100):kv.ct>0?Math.round(kv.re/kv.ct*100):0;
+    sl('v-tx',vTxTransfo+'%');
   }
 }
 
