@@ -727,9 +727,11 @@ function tKPI(){
 function vKPI(v){
   const s=S[v]||{contacts:[],affaires:[],memo:[],counter:0};
   let cs=0,fi=0,gr=0,co=0,wa=0,al=0;
-  // Pour un vendeur individuel, on affiche toutes ses commandes (VN + VO)
-  s.memo.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
-  return{ct:s.counter,ac:s.affaires.length,ob:OBJ[v]?.objectif_commandes??0,re:s.memo.length,cs,fi,gr,co,wa,al};
+  // Filtrer les mémos par currentEquipe — un vendeur VN+VO a des mémos des deux côtés
+  // Sur la page VN on n'affiche que ses réalisations VN, sur VO que ses réalisations VO
+  const memoEq=s.memo.filter(m=>!m.equipe||m.equipe===currentEquipe);
+  memoEq.forEach(m=>{const o=m.opts||[];if(o.includes('Cde Stock'))cs++;if(o.includes('Financement'))fi++;if(o.includes('Gravage'))gr++;if(o.includes('Coyote'))co++;if(o.includes('Waxoyl'))wa++;if(o.includes('A.Lease'))al++;});
+  return{ct:s.counter,ac:s.affaires.length,ob:OBJ[v]?.objectif_commandes??0,re:memoEq.length,cs,fi,gr,co,wa,al};
 }
 function pct(a,b){return b>0?Math.round(a/b*100):0}
 
@@ -857,8 +859,11 @@ function rVend(v){
       <td><div class="acts"><button class="ba bG" onclick="openModalG('${v}','${a.id}')">G</button><button class="ba bP" onclick="doPa('${v}','${a.id}')">P</button></div></td>
     </tr>`;
   });
-  // Commandes gagnées de ce vendeur
-  const sm=[...s.memo].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  // Commandes gagnées de ce vendeur — filtrées par currentEquipe
+  // Un vendeur VN+VO voit ses commandes VN côté VN, ses commandes VO côté VO
+  const sm=[...s.memo]
+    .filter(m=>!m.equipe||m.equipe===currentEquipe)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
   let mr='';
   if(sm.length===0){
     mr=`<tr class="empty-r"><td colspan="5" style="text-align:center;padding:20px;color:var(--text3)">Aucune commande gagnée ce mois — les commandes validées apparaîtront ici</td></tr>`;
@@ -867,8 +872,8 @@ function rVend(v){
       const opts=(m.opts||[]).join(', ')||'—';
       const hasStock=(m.opts||[]).includes('Cde Stock');
       const hasFin=(m.opts||[]).includes('Financement');
-      const eqBadge=m.equipe&&m.equipe!==currentEquipe?
-        `<span style="margin-left:6px;font-size:9px;background:${m.equipe==='VN'?'#eff6ff;color:#1d4ed8':'#fff7ed;color:#b45309'};padding:2px 6px;border-radius:10px;font-weight:700;border:1px solid ${m.equipe==='VN'?'#bfdbfe':'#fed7aa'}">${m.equipe}</span>`:'';
+      // Pas de badge équipe — on est déjà filtrés par currentEquipe
+      const eqBadge='';
       mr+=`<tr style="${hasStock?'background:#f5f3ff':''}">
         <td><span class="cd">${fmt(m.date)}</span></td>
         <td><span class="cc">${m.client}</span>${hasStock?'<span style="margin-left:6px;font-size:9px;background:#7c3aed;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600">STOCK</span>':''}${eqBadge}</td>
@@ -1281,7 +1286,17 @@ async function saveObj(){
   });
   renderAll();toast('Objectifs mis à jour ✓');
   for(const v of VS){
-    await db.from('objectifs').upsert({vendeur:v,objectif_commandes:OBJ[v].objectif_commandes,objectif_contacts:OBJ[v].objectif_contacts},{onConflict:'vendeur'}).catch(()=>{});
+    // Sauvegarder avec equipe pour que chaque équipe ait ses propres objectifs
+    await db.from('objectifs').upsert(
+      {vendeur:v,equipe:currentEquipe,objectif_commandes:OBJ[v].objectif_commandes,objectif_contacts:OBJ[v].objectif_contacts},
+      {onConflict:'vendeur,equipe'}
+    ).catch(()=>{
+      // Fallback si la contrainte vendeur+equipe n'existe pas encore
+      db.from('objectifs').upsert(
+        {vendeur:v,objectif_commandes:OBJ[v].objectif_commandes,objectif_contacts:OBJ[v].objectif_contacts},
+        {onConflict:'vendeur'}
+      ).catch(()=>{});
+    });
   }
 }
 
