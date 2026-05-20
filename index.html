@@ -1253,37 +1253,58 @@ async function loadQualifBadges(){
 // Qualifier un vendeur — delete complet puis insert propre
 async function setQualif(nom,service){
   try{
-    // Trouver les slots selon la convention : VN=1-9, VO=11-19
-    var idxVN=vsVN.indexOf(nom);
-    var idxVO=vsVO.indexOf(nom);
-    var slotVN=idxVN>=0?idxVN+1:null;       // slot 1-9
-    var slotVO=idxVO>=0?idxVO+11:null;      // slot 11-19
+    // Trouver les positions dans les tableaux globaux
+    var idxVN=vsVN.indexOf(nom);  // 0-8
+    var idxVO=vsVO.indexOf(nom);  // 0-8
 
-    // Si le vendeur n'est nulle part encore, prendre un slot libre
-    if(!slotVN&&!slotVO){
-      slotVN=1; slotVO=11; // fallback
+    // Convention slots : VN=1-9, VO=11-19
+    // Si le vendeur n'est pas encore dans un tableau, on lui trouve une place
+    var sVN=idxVN>=0 ? idxVN+1 : null;
+    var sVO=idxVO>=0 ? idxVO+11 : null;
+
+    // Cas VN+VO : le vendeur doit être dans les deux tableaux
+    // Si absent d'un des deux, on cherche le premier slot libre dans cette plage
+    if(service==='VN,VO'){
+      if(!sVN){
+        // Chercher un slot libre dans 1-9
+        var taken=new Set(vsVN.map((_,i)=>i+1));
+        for(var i=1;i<=9;i++){if(!taken.has(i)){sVN=i;break;}}
+        if(!sVN)sVN=1; // fallback
+      }
+      if(!sVO){
+        // Chercher un slot libre dans 11-19
+        var taken2=new Set(vsVO.map((_,i)=>i+11));
+        for(var i=11;i<=19;i++){if(!taken2.has(i)){sVO=i;break;}}
+        if(!sVO)sVO=11; // fallback
+      }
+    } else if(service==='VN'&&!sVN){
+      var taken=new Set(vsVN.map((_,i)=>i+1));
+      for(var i=1;i<=9;i++){if(!taken.has(i)){sVN=i;break;}}
+      if(!sVN)sVN=1;
+    } else if(service==='VO'&&!sVO){
+      var taken=new Set(vsVO.map((_,i)=>i+11));
+      for(var i=11;i<=19;i++){if(!taken.has(i)){sVO=i;break;}}
+      if(!sVO)sVO=11;
     }
 
     // Supprimer TOUTES les lignes existantes pour ce vendeur
     var del=await db.from('vendeurs_config').delete().eq('nom',nom);
     if(del.error){toast('Erreur suppression: '+del.error.message);return;}
 
-    // Réinsérer selon service choisi — chaque équipe a son slot propre
+    // Pause courte pour que le DELETE soit effectif avant l'INSERT
+    await new Promise(r=>setTimeout(r,200));
+
+    // Réinsérer — slots VN (1-9) et VO (11-19) sont toujours différents = pas de conflit
     if(service==='VN,VO'){
-      // VN avec slot 1-9, VO avec slot 11-19 : JAMAIS de conflit
-      var sVN=slotVN||(idxVN>=0?idxVN+1:1);
-      var sVO=slotVO||(idxVO>=0?idxVO+11:11);
       var insVN=await db.from('vendeurs_config').insert({nom:nom,equipe:'VN',slot:sVN});
       if(insVN.error){toast('Erreur insert VN: '+insVN.error.message);console.error(insVN.error);return;}
       var insVO=await db.from('vendeurs_config').insert({nom:nom,equipe:'VO',slot:sVO});
       if(insVO.error){toast('Erreur insert VO: '+insVO.error.message);console.error(insVO.error);return;}
     } else if(service==='VN'){
-      var s=slotVN||(idxVN>=0?idxVN+1:1);
-      var ins=await db.from('vendeurs_config').insert({nom:nom,equipe:'VN',slot:s});
+      var ins=await db.from('vendeurs_config').insert({nom:nom,equipe:'VN',slot:sVN});
       if(ins.error){toast('Erreur insert VN: '+ins.error.message);return;}
     } else {
-      var s=slotVO||(idxVO>=0?idxVO+11:11);
-      var ins=await db.from('vendeurs_config').insert({nom:nom,equipe:'VO',slot:s});
+      var ins=await db.from('vendeurs_config').insert({nom:nom,equipe:'VO',slot:sVO});
       if(ins.error){toast('Erreur insert VO: '+ins.error.message);return;}
     }
 
