@@ -660,14 +660,18 @@ async function loadVendeurNames(){
 async function loadData(){
   showL(true);
   try{
-    const[cR,aR,kR,oR]=await Promise.all([
+    const[cR,aR,kR]=await Promise.all([
       db.from('contacts').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
       db.from('affaires').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
-      db.from('compteurs').select('*').eq('equipe',currentEquipe),
-      db.from('objectifs').select('*').eq('equipe',currentEquipe)
+      db.from('compteurs').select('*').eq('equipe',currentEquipe)
     ]);
-    // Les mémos : charger par nom de vendeur (pas par équipe) pour inclure
-    // les commandes VN+VO d'un même vendeur quelle que soit l'équipe enregistrée
+    // Objectifs : chercher d'abord pour currentEquipe, sinon fallback sans filtre equipe
+    let oR=await db.from('objectifs').select('*').eq('equipe',currentEquipe);
+    if(!oR.data||oR.data.length===0){
+      // Fallback : charger sans filtre equipe (anciennes données avant migration)
+      oR=await db.from('objectifs').select('*');
+    }
+    // Les mémos : charger par nom de vendeur pour inclure les commandes VN+VO
     const mR = VS.length>0
       ? await db.from('memo').select('*').in('vendeur',VS).order('created_at',{ascending:false})
       : {data:[]};
@@ -676,7 +680,6 @@ async function loadData(){
     (aR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].affaires.push(r)});
     (mR.data||[]).forEach(r=>{
       if(S[r.vendeur])S[r.vendeur].memo.push(r);
-      // GM = mémos de l'équipe courante uniquement (pour stats et classement)
       if(!r.equipe||r.equipe===currentEquipe)GM.push(r);
     });
     (kR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].counter=r.valeur??0});
@@ -1285,18 +1288,23 @@ async function saveObj(){
     }
   });
   renderAll();toast('Objectifs mis à jour ✓');
+  // Sauvegarder les objectifs séparément pour chaque équipe
+  // D'abord vérifier si une ligne vendeur+equipe existe, puis INSERT ou UPDATE
   for(const v of VS){
-    // Sauvegarder avec equipe pour que chaque équipe ait ses propres objectifs
-    await db.from('objectifs').upsert(
-      {vendeur:v,equipe:currentEquipe,objectif_commandes:OBJ[v].objectif_commandes,objectif_contacts:OBJ[v].objectif_contacts},
-      {onConflict:'vendeur,equipe'}
-    ).catch(()=>{
-      // Fallback si la contrainte vendeur+equipe n'existe pas encore
-      db.from('objectifs').upsert(
-        {vendeur:v,objectif_commandes:OBJ[v].objectif_commandes,objectif_contacts:OBJ[v].objectif_contacts},
-        {onConflict:'vendeur'}
-      ).catch(()=>{});
-    });
+    try{
+      const eq=currentEquipe;
+      const oc=OBJ[v].objectif_commandes;
+      const ok=OBJ[v].objectif_contacts;
+      // Chercher si la ligne existe pour ce vendeur+equipe
+      const ex=await db.from('objectifs').select('id').eq('vendeur',v).eq('equipe',eq).limit(1);
+      if(ex.data&&ex.data.length>0){
+        // UPDATE
+        await db.from('objectifs').update({objectif_commandes:oc,objectif_contacts:ok}).eq('vendeur',v).eq('equipe',eq);
+      } else {
+        // INSERT nouvelle ligne pour cette equipe
+        await db.from('objectifs').insert({vendeur:v,equipe:eq,objectif_commandes:oc,objectif_contacts:ok});
+      }
+    }catch(e){console.warn('saveObj vendeur',v,e);}
   }
 }
 
