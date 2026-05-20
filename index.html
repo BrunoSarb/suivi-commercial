@@ -619,9 +619,18 @@ $('li-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 
 async function loadVendeurNames(){
   try{
-    const{data}=await db.from('vendeurs_config').select('*').eq('equipe',currentEquipe).order('slot',{ascending:true});
-    if(data&&data.length>0){VS=data.map(r=>r.nom);}
-  }catch(e){console.log('Using default vendeur names');}
+    const{data,error}=await db.from('vendeurs_config').select('*').eq('equipe',currentEquipe).order('slot',{ascending:true});
+    if(!error&&data&&data.length>0){
+      VS=data.map(r=>r.nom);
+      console.log('VS chargé pour '+currentEquipe+':',VS);
+    } else {
+      // Fallback : noms génériques si rien en base pour cette équipe
+      VS=['Vendeur 1','Vendeur 2','Vendeur 3','Vendeur 4','Vendeur 5','Vendeur 6','Vendeur 7','Vendeur 8','Vendeur 9'];
+      console.log('Fallback VS (aucune config pour '+currentEquipe+')');
+    }
+  }catch(e){
+    console.warn('loadVendeurNames error:',e);
+  }
 }
 
 async function loadData(){
@@ -1097,35 +1106,32 @@ async function loadQualifBadges(){
 
 // Qualifier un vendeur dans un service
 async function setQualif(nom,service){
-  var vk=nom.replace(/[^a-zA-Z0-9]/g,'_');
-  // Trouver le slot depuis VS
-  var slot=VS.indexOf(nom)+1;
-  if(slot===0)slot=99;
+  // Chercher le slot actuel dans vendeurs_config (peu importe l'équipe)
   try{
+    var slotRes=await db.from('vendeurs_config').select('slot').eq('nom',nom).limit(1);
+    var slot=(slotRes.data&&slotRes.data.length>0)?slotRes.data[0].slot:(VS.indexOf(nom)+1||99);
+
+    // Étape 1 : supprimer TOUTES les lignes existantes pour ce vendeur
+    await db.from('vendeurs_config').delete().eq('nom',nom);
+
+    // Étape 2 : réinsérer selon le service choisi
     var equipes=service==='VN,VO'?['VN','VO']:[service];
-    // Insérer dans les équipes demandées si pas encore là
     for(var eq of equipes){
-      var ex=await db.from('vendeurs_config').select('id').eq('nom',nom).eq('equipe',eq).limit(1);
-      if(!ex.data||ex.data.length===0){
-        await db.from('vendeurs_config').insert({nom:nom,equipe:eq,slot:slot});
-      }
+      await db.from('vendeurs_config').insert({nom:nom,equipe:eq,slot:slot});
     }
-    // Supprimer des équipes non demandées
-    if(service!=='VN,VO'){
-      var autreEq=service==='VN'?'VO':'VN';
-      await db.from('vendeurs_config').delete().eq('nom',nom).eq('equipe',autreEq);
-    }
+
     // Mettre à jour aussi la table utilisateurs si ce vendeur a un compte
     var uRes=await db.from('utilisateurs').select('id').eq('vendeur_nom',nom).limit(1);
     if(uRes.data&&uRes.data.length>0){
       await db.from('utilisateurs').update({equipe:service}).eq('vendeur_nom',nom);
     }
+
     toast(nom+' → '+service+' ✓');
-    // Rafraîchir les badges
     await loadQualifBadges();
-    // Recharger les données si on est sur la bonne équipe
-    if(service===currentEquipe||service==='VN,VO')await loadData();
-  }catch(e){toast('Erreur: '+e.message);}
+    // Recharger les données de l'équipe courante
+    await loadVendeurNames();
+    await loadData();
+  }catch(e){toast('Erreur setQualif: '+e.message);console.error(e);}
 }
 
 // Aperçu live des initiales quand on tape
@@ -1535,7 +1541,12 @@ async function switchEquipe(eq){
   if(btnVN&&btnVO){if(eq==='VN'){btnVN.className='eq-btn active-vn';btnVO.className='eq-btn';}else{btnVN.className='eq-btn';btnVO.className='eq-btn active-vo';}}
   var label=document.getElementById('kb-label-team');
   if(label)label.textContent='Tableau de bord équipe — '+eq;
-  pg=null;await loadData();if(VS.length>0)pg=VS[0];renderAll();
+  pg=null;
+  // Recharger les noms PUIS les données pour que VS corresponde à la bonne équipe
+  await loadVendeurNames();
+  await loadData();
+  if(VS.length>0)pg=VS[0];
+  renderAll();
 }
 </script>
 </body>
