@@ -811,7 +811,8 @@ async function loadData(){
     (aR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].affaires.push(r)});
     (mR.data||[]).forEach(r=>{
       if(S[r.vendeur])S[r.vendeur].memo.push(r);
-      if(!r.equipe||r.equipe===currentEquipe)GM.push(r);
+      const moisCourantGM=new Date().toISOString().slice(0,7);
+      if((!r.equipe||r.equipe===currentEquipe)&&r.date&&r.date.slice(0,7)===moisCourantGM)GM.push(r);
     });
     (kR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].counter=r.valeur??0});
     (oR.data||[]).forEach(r=>{OBJ[r.vendeur]={objectif_commandes:r.objectif_commandes??20,objectif_contacts:r.objectif_contacts??50}});
@@ -861,7 +862,8 @@ function tKPI(){
     ct+=S[v].counter; // compteur manuel (contacts téléphoniques)
     ac+=S[v].affaires.length;
     ob+=OBJ[v]?.objectif_commandes??0;
-    const memoEq=S[v].memo.filter(m=>!m.equipe||m.equipe===currentEquipe);
+    const moisCourantKPI2=new Date().toISOString().slice(0,7);
+    const memoEq=S[v].memo.filter(m=>(!m.equipe||m.equipe===currentEquipe)&&m.date&&m.date.slice(0,7)===moisCourantKPI2);
     re+=memoEq.length;
     // Dénominateur tx transfo = TOUTES les fiches contact créées :
     // contacts actifs + affaires chaudes + gagnés + perdus (tous persistés en DB)
@@ -888,7 +890,8 @@ function vKPI(v){
   let cs=0,fi=0,loa=0,gr=0,co=0,wa=0,al=0,pl=0,ce=0;
   // Filtrer les mémos par currentEquipe — un vendeur VN+VO a des mémos des deux côtés
   // Sur la page VN on n'affiche que ses réalisations VN, sur VO que ses réalisations VO
-  const memoEq=s.memo.filter(m=>!m.equipe||m.equipe===currentEquipe);
+  const moisCourantKPI=new Date().toISOString().slice(0,7);
+  const memoEq=s.memo.filter(m=>(!m.equipe||m.equipe===currentEquipe)&&m.date&&m.date.slice(0,7)===moisCourantKPI);
   memoEq.forEach(m=>{const o=m.opts||[];
     if(o.includes('Cde Stock'))cs++;
     if(o.includes('Financement')||o.includes('Fi Classic'))fi++;
@@ -1065,10 +1068,11 @@ function rVend(v){
       <td><div class="acts"><button class="ba bG" onclick="openModalG('${v}','${a.id}')">G</button><button class="ba bP" onclick="doPa('${v}','${a.id}')">P</button></div></td>
     </tr>`;
   });
-  // Commandes gagnées de ce vendeur — filtrées par currentEquipe
-  // Un vendeur VN+VO voit ses commandes VN côté VN, ses commandes VO côté VO
+  // Commandes gagnées de ce vendeur — mois en cours uniquement + équipe courante
+  // L'historique complet est dans le Bilan Annuel
+  const moisCourantVend=new Date().toISOString().slice(0,7);
   const sm=[...s.memo]
-    .filter(m=>!m.equipe||m.equipe===currentEquipe)
+    .filter(m=>(!m.equipe||m.equipe===currentEquipe) && m.date && m.date.slice(0,7)===moisCourantVend)
     .sort((a,b)=>new Date(b.date)-new Date(a.date));
   let mr='';
   if(sm.length===0){
@@ -1237,12 +1241,56 @@ function rObj(){
 
 function rRAZ(){
   if(!canAdmin())return locked();
+  var moisCourant=new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
   let cards='';
   VS.forEach(v=>{
     const s=S[v]||{counter:0};
-    cards+=`<div class="cfg-card" style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:10px"><div class="cfg-av">${ini(v)}</div><div><div style="font-weight:500;font-size:13px">${v}</div><div style="font-size:11px;color:var(--text3)">Compteur : <strong style="color:var(--navy2);font-family:'DM Mono',monospace">${s.counter}</strong></div></div></div><button class="btn-raz" style="background:var(--red2);color:var(--red);border-color:#fecaca;padding:5px 12px;font-size:11px" onclick="razOne('${v}')">RAZ</button></div>`;
+    const nbMemo=(s.memo||[]).filter(m=>!m.equipe||m.equipe===currentEquipe).length;
+    cards+=`<div class="cfg-card" style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="cfg-av">${ini(v)}</div>
+        <div>
+          <div style="font-weight:500;font-size:13px">${v}</div>
+          <div style="font-size:11px;color:var(--text3)">
+            Contacts : <strong style="color:var(--navy2);font-family:'DM Mono',monospace">${s.counter}</strong>
+            &nbsp;·&nbsp; Commandes : <strong style="color:var(--green2);font-family:'DM Mono',monospace">${nbMemo}</strong>
+          </div>
+        </div>
+      </div>
+      <button class="btn-raz" style="background:var(--red2);color:var(--red);border-color:#fecaca;padding:5px 12px;font-size:11px" onclick="razOne('${v}')">RAZ compteur</button>
+    </div>`;
   });
-  return`<div class="sec"><div class="sec-h ch"><div class="sec-title"><div class="sic">🔄</div>Remise à zéro des compteurs</div></div><div class="cfg-grid">${cards}</div><button class="btn-sv" onclick="razAll()" style="background:var(--red);">RAZ — Tous les compteurs</button></div>`;
+  return\`<div class="sec" style="border:2px solid #f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.15)">
+    <div class="sec-h" style="background:linear-gradient(135deg,#92400e,#b45309);padding:14px 18px">
+      <div class="sec-title" style="font-size:15px"><div class="sic" style="font-size:14px">📅</div>Clôture fin de mois</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.6)">\${moisCourant}</div>
+    </div>
+    <div style="padding:18px;background:#fffbeb;border-bottom:1px solid #fed7aa">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+        <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #fed7aa;text-align:center">
+          <div style="font-size:11px;color:#92400e;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">✅ Archivé</div>
+          <div style="font-size:12px;color:var(--text2)">Commandes → Bilan annuel</div>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #fecaca;text-align:center">
+          <div style="font-size:11px;color:#b91c1c;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">🗑️ Remis à zéro</div>
+          <div style="font-size:12px;color:var(--text2)">Commandes · Compteurs · Leads</div>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #bbf7d0;text-align:center">
+          <div style="font-size:11px;color:#15803d;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">✅ Conservé</div>
+          <div style="font-size:12px;color:var(--text2)">Contacts actifs · Affaires chaudes</div>
+        </div>
+      </div>
+      <button onclick="razSecurise()"
+        style="width:100%;padding:14px;background:linear-gradient(135deg,#b45309,#92400e);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;letter-spacing:.02em;box-shadow:0 4px 12px rgba(180,83,9,.4)">
+        📅 Clôturer le mois — Archiver &amp; Remettre à zéro
+      </button>
+    </div>
+  </div>
+  <div class="sec" style="margin-top:12px">
+    <div class="sec-h ch"><div class="sec-title"><div class="sic">🔄</div>RAZ compteurs individuels</div></div>
+    <div class="cfg-grid">\${cards}</div>
+    <button class="btn-sv" onclick="razAll()" style="background:var(--red);">RAZ — Tous les compteurs</button>
+  </div>\`;
 }
 
 // ══ PAGE NOMS VENDEURS ══
@@ -1862,33 +1910,318 @@ function rBilan(){
   return'<div class="sec"><div class="sec-h" style="background:linear-gradient(135deg,var(--navy),#1e3a8a)"><div class="sec-title"><div class="sic">&#128197;</div>Bilan annuel '+annee+'</div><div style="font-size:11px;color:rgba(255,255,255,.5)">commandes gagnees &bull; % financement par mois</div></div><div class="bilan-wrap"><table class="bilan-table"><thead><tr><th class="th-vendeur">Vendeur</th>'+thMois+'<th class="th-cumul">Cumul '+annee+'</th></tr></thead><tbody>'+rows+'<tr style="background:#fffbeb;border-top:2px solid var(--gold)"><td class="td-vendeur" style="background:#fffbeb;color:#92400e;font-size:13px"><span style="font-size:14px;margin-right:6px">&Sigma;</span>Total equipe</td>'+totalMois+'<td class="bilan-cumul" style="background:#fffbeb"><div class="bilan-mois"><div class="bilan-cde" style="color:#92400e;font-size:18px">'+totalRe+'</div>'+(totalFi>0?'<div class="bilan-sub fin">'+totalPfin+'% fin.</div>':'')+'</div></td></tr></tbody></table></div><div style="padding:10px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border);display:flex;gap:16px"><span>&#128309; Mois courant surligne</span><span>&#128202; Chiffre = commandes gagnees</span><span>&#128153; % fin. = taux financement</span><span>&#129351;&#129352;&#129353; = classement annuel</span></div></div>';
 }
 
+// ── CLÔTURE SÉCURISÉE ──
+// Vérifie si des données du mois en cours existent
+// Si oui → affiche un tableau de sélection ligne par ligne
+// Si non → clôture normale directe
+
+async function razSecurise(){
+  if(!canAdmin()){toast('Réservé au chef ou directeur');return;}
+  var moisCourant=new Date().toISOString().slice(0,7);
+
+  // Collecter toutes les commandes du mois en cours
+  var cmdsMoisCourant=[];
+  GM.forEach(function(m){
+    if(!m.date||!m.vendeur)return;
+    if(m.date.slice(0,7)===moisCourant) cmdsMoisCourant.push(m);
+  });
+
+  if(cmdsMoisCourant.length===0){
+    // Aucune donnée du mois en cours → clôture normale
+    razFinDeMois();
+    return;
+  }
+
+  // Des données du mois en cours existent → afficher la modale de sélection
+  var moisLabel=new Date(moisCourant+'-01').toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  showRazModal(cmdsMoisCourant, moisCourant, moisLabel);
+}
+
+function showRazModal(cmds, moisCourant, moisLabel){
+  // Supprimer une éventuelle modale existante
+  var existing=document.getElementById('raz-modal');
+  if(existing)existing.remove();
+
+  // Construire les lignes du tableau
+  var rows=cmds.map(function(m,i){
+    var opts=(m.opts||[]).join(', ')||'—';
+    var hasFin=(m.opts||[]).includes('Financement')||(m.opts||[]).includes('Fi Classic')||(m.opts||[]).includes('LOA');
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      +'<td style="padding:8px 12px;text-align:center">'
+      +'<input type="checkbox" id="raz-chk-'+i+'" checked '
+      +'style="width:16px;height:16px;cursor:pointer;accent-color:var(--green2)">'
+      +'</td>'
+      +'<td style="padding:8px 12px">'
+      +'<div style="display:flex;align-items:center;gap:8px">'
+      +'<div style="width:24px;height:24px;border-radius:50%;background:var(--navy2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">'+ini(m.vendeur)+'</div>'
+      +'<div style="font-weight:600;font-size:12px">'+m.vendeur+'</div>'
+      +'</div></td>'
+      +'<td style="padding:8px 12px;font-size:12px;color:var(--text3)">'+fmt(m.date)+'</td>'
+      +'<td style="padding:8px 12px;font-size:12px;font-weight:500">'+m.client+'</td>'
+      +'<td style="padding:8px 12px;font-size:11px;color:var(--text3)">'+m.vehicule+'</td>'
+      +'<td style="padding:8px 12px">'+(hasFin?'<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600">✓ FIN</span>':'')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  var modal=document.createElement('div');
+  modal.id='raz-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(15,31,61,.7);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:16px';
+
+  modal.innerHTML='<div style="background:#fff;border-radius:14px;width:100%;max-width:800px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
+    // Header
+    +'<div style="background:linear-gradient(135deg,#b45309,#92400e);padding:16px 20px;display:flex;align-items:center;justify-content:space-between">'
+    +'<div>'
+    +'<div style="font-size:15px;font-weight:700;color:#fff">⚠️ Données du mois en cours détectées</div>'
+    +'<div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:3px">'+moisLabel+' — '+cmds.length+' commande'+(cmds.length>1?'s':'')+' enregistrée'+(cmds.length>1?'s':'')+' ce mois</div>'
+    +'</div>'
+    +'<button onclick="document.getElementById('raz-modal').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>'
+    +'</div>'
+    // Avertissement
+    +'<div style="padding:14px 20px;background:#fff7ed;border-bottom:1px solid #fed7aa;font-size:13px;color:#92400e">'
+    +'<strong>Choisissez ce que vous souhaitez conserver dans le Bilan Annuel.</strong><br>'
+    +'<span style="font-size:12px">Les lignes cochées ✅ seront archivées. Les lignes décochées seront supprimées définitivement.</span>'
+    +'</div>'
+    // Sélection rapide
+    +'<div style="padding:10px 20px;background:#f8f9ff;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">'
+    +'<span style="font-size:12px;color:var(--text3)">Sélection rapide :</span>'
+    +'<button onclick="razSelectAll(true)" style="padding:4px 12px;border-radius:5px;border:1px solid var(--border2);background:#fff;font-size:12px;cursor:pointer">✅ Tout cocher</button>'
+    +'<button onclick="razSelectAll(false)" style="padding:4px 12px;border-radius:5px;border:1px solid var(--border2);background:#fff;font-size:12px;cursor:pointer">⬜ Tout décocher</button>'
+    +'<span style="margin-left:auto;font-size:12px;color:var(--text3)" id="raz-count-lbl">'+cmds.length+'/'+cmds.length+' sélectionnées</span>'
+    +'</div>'
+    // Tableau
+    +'<div style="overflow-y:auto;flex:1">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:13px">'
+    +'<thead><tr style="background:var(--bg)">'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);text-align:center">Archiver</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Vendeur</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Date</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Client</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Véhicule</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Fin.</th>'
+    +'</tr></thead>'
+    +'<tbody>'+rows+'</tbody>'
+    +'</table>'
+    +'</div>'
+    // Boutons action
+    +'<div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;background:#fff">'
+    +'<button onclick="document.getElementById('raz-modal').remove()" style="flex:1;padding:11px;background:var(--bg);color:var(--text2);border:1px solid var(--border2);border-radius:8px;font-size:14px;cursor:pointer;font-family:'DM Sans',sans-serif">Annuler</button>'
+    +'<button onclick="razConfirmSelection('+JSON.stringify(cmds.map(function(m){return m.id||''}))+',''+moisCourant+'')" style="flex:2;padding:11px;background:linear-gradient(135deg,#b45309,#92400e);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📅 Confirmer la clôture</button>'
+    +'</div>'
+    +'</div>';
+
+  // Mettre à jour le compteur quand on coche/décoche
+  modal.querySelectorAll && setTimeout(function(){
+    for(var i=0;i<cmds.length;i++){
+      (function(idx){
+        var chk=document.getElementById('raz-chk-'+idx);
+        if(chk) chk.addEventListener('change',function(){
+          var cnt=0;
+          for(var j=0;j<cmds.length;j++){var el=document.getElementById('raz-chk-'+j);if(el&&el.checked)cnt++;}
+          var lbl=document.getElementById('raz-count-lbl');
+          if(lbl)lbl.textContent=cnt+'/'+cmds.length+' sélectionnées';
+        });
+      })(i);
+    }
+  },50);
+
+  document.body.appendChild(modal);
+}
+
+function razSelectAll(checked){
+  var i=0;
+  while(document.getElementById('raz-chk-'+i)){
+    document.getElementById('raz-chk-'+i).checked=checked;
+    i++;
+  }
+  // Déclencher l'event pour mettre à jour le compteur
+  var lbl=document.getElementById('raz-count-lbl');
+  if(lbl){var total=i;lbl.textContent=(checked?total:0)+'/'+total+' sélectionnées';}
+}
+
+async function razConfirmSelection(allIds, moisCourant){
+  // Récupérer les IDs cochés
+  var selectedIds=[];
+  var rejectedIds=[];
+  allIds.forEach(function(id,i){
+    var chk=document.getElementById('raz-chk-'+i);
+    if(chk&&chk.checked) selectedIds.push(id);
+    else rejectedIds.push(id);
+  });
+
+  document.getElementById('raz-modal').remove();
+  showL(true);
+  toast('Clôture en cours...',8000);
+
+  // Archiver uniquement les sélectionnées dans bilan_annuel
+  var cmdsSel=GM.filter(function(m){return selectedIds.includes(m.id||'');});
+  var archive={};
+  cmdsSel.forEach(function(m){
+    if(!m.vendeur||!m.date)return;
+    var v=m.vendeur;var mo=m.date.slice(0,7);
+    if(!archive[v])archive[v]={};
+    if(!archive[v][mo])archive[v][mo]={re:0,fi:0};
+    archive[v][mo].re++;
+    if((m.opts||[]).includes('Financement')||(m.opts||[]).includes('Fi Classic'))archive[v][mo].fi++;
+    if((m.opts||[]).includes('LOA'))archive[v][mo].fi++; // LOA compte dans fi
+  });
+
+  // Fusionner dans bilanDB
+  Object.entries(archive).forEach(function(e){
+    var v=e[0],md=e[1];
+    if(!bilanDB[v])bilanDB[v]={};
+    Object.entries(md).forEach(function(f){
+      var mo=f[0],vals=f[1];
+      var ex=bilanDB[v][mo]||{re:0,fi:0};
+      bilanDB[v][mo]={re:ex.re+vals.re,fi:ex.fi+vals.fi};
+    });
+  });
+
+  // Sauvegarder en base
+  for(var v of Object.keys(archive)){
+    for(var mo of Object.keys(archive[v])){
+      var d=bilanDB[v][mo];
+      try{
+        var ins=await db.from('bilan_annuel').insert({vendeur:v,mois:mo,commandes:d.re,financements:d.fi,equipe:currentEquipe});
+        if(ins.error) await db.from('bilan_annuel').update({commandes:d.re,financements:d.fi}).eq('vendeur',v).eq('mois',mo).eq('equipe',currentEquipe);
+      }catch(e){}
+    }
+  }
+
+  // RAZ mémoire
+  VS.forEach(function(v){if(S[v]){S[v].counter=0;S[v].memo=[];S[v].perduAC=[];S[v].perduC=[];}});
+  GM=[];leadsData={};
+
+  // RAZ base
+  for(var v of VS){
+    try{
+      var ex=await db.from('compteurs').select('id').eq('vendeur',v).eq('equipe',currentEquipe).limit(1);
+      if(ex.data&&ex.data.length>0) await db.from('compteurs').update({valeur:0}).eq('vendeur',v).eq('equipe',currentEquipe);
+      else await db.from('compteurs').insert({vendeur:v,valeur:0,equipe:currentEquipe});
+    }catch(e){}
+  }
+  try{await db.from('memo').delete().eq('equipe',currentEquipe);}catch(e){}
+  try{if(VS.length>0)await db.from('contacts_perdus').delete().in('vendeur',VS);}catch(e){}
+  try{if(VS.length>0)await db.from('leads').delete().eq('mois',moisCourant).in('vendeur',VS);}catch(e){}
+
+  showL(false);
+  renderAll();
+
+  var nbArch=selectedIds.length;
+  var nbSuppr=rejectedIds.length;
+  var msg='✅ Clôture effectuée !';
+  if(nbArch>0) msg+=' '+nbArch+' commande'+(nbArch>1?'s':'')+' archivée'+(nbArch>1?'s':'');
+  if(nbSuppr>0) msg+=' · '+nbSuppr+' supprimée'+(nbSuppr>1?'s':'')+' (non archivée'+(nbSuppr>1?'s':'')+')';
+  toast(msg, 5000);
+}
+
 async function razFinDeMois(){
   if(!canAdmin()){toast('Reserve au chef ou directeur');return;}
-  if(!confirm('RAZ Fin de mois\n\nArchive les resultats dans le Bilan Annuel\net remet les compteurs a zero.\n\nContacts actifs et affaires chaudes conserves.\n\nConfirmer ?'))return;
-  toast('Archivage en cours...');
+  var moisCourant=new Date().toISOString().slice(0,7);
+  if(!confirm(
+    '📅 CLÔTURE DU MOIS — '+moisCourant+'\n\n'+
+    '✅ Archivé dans le Bilan Annuel :\n'+
+    '   → Commandes gagnées de chaque vendeur\n\n'+
+    '🗑️ Remis à zéro :\n'+
+    '   → Commandes gagnées (Mes commandes gagnées)\n'+
+    '   → Compteurs de contacts\n'+
+    '   → Contacts perdus & affaires perdues\n'+
+    '   → Leads du mois\n\n'+
+    '✅ Conservés intacts :\n'+
+    '   → Contacts actifs en cours\n'+
+    '   → Affaires chaudes en cours\n'+
+    '   → Objectifs\n\n'+
+    'Confirmer la clôture ?'
+  ))return;
+
+  showL(true);
+  toast('Archivage en cours...',10000);
+
+  // ── ÉTAPE 1 : Archiver les commandes dans bilan_annuel ──
   var archive={};
-  GM.forEach(function(m){if(!m.vendeur||!m.date)return;var v=m.vendeur;var mo=m.date.slice(0,7);if(!archive[v])archive[v]={};if(!archive[v][mo])archive[v][mo]={re:0,fi:0};archive[v][mo].re++;if((m.opts||[]).includes('Financement'))archive[v][mo].fi++;});
-  Object.entries(archive).forEach(function(e){var v=e[0],moisData=e[1];if(!bilanDB[v])bilanDB[v]={};Object.entries(moisData).forEach(function(f){var mo=f[0],vals=f[1];bilanDB[v][mo]={re:(bilanDB[v][mo]?bilanDB[v][mo].re:0)+vals.re,fi:(bilanDB[v][mo]?bilanDB[v][mo].fi:0)+vals.fi};});});
+  GM.forEach(function(m){
+    if(!m.vendeur||!m.date)return;
+    var v=m.vendeur;var mo=m.date.slice(0,7);
+    if(!archive[v])archive[v]={};
+    if(!archive[v][mo])archive[v][mo]={re:0,fi:0,loa:0,pl:0,ce:0,gr:0,co:0,wa:0,cs:0};
+    var o=m.opts||[];
+    archive[v][mo].re++;
+    if(o.includes('Financement')||o.includes('Fi Classic'))archive[v][mo].fi++;
+    if(o.includes('LOA'))archive[v][mo].loa++;
+    if(o.includes('Pack Liv'))archive[v][mo].pl++;
+    if(o.includes('C.Ent'))archive[v][mo].ce++;
+    if(o.includes('Gravage'))archive[v][mo].gr++;
+    if(o.includes('Coyote'))archive[v][mo].co++;
+    if(o.includes('Waxoyl'))archive[v][mo].wa++;
+    if(o.includes('Cde Stock'))archive[v][mo].cs++;
+  });
+  // Fusionner dans bilanDB local
+  Object.entries(archive).forEach(function(e){
+    var v=e[0],md=e[1];
+    if(!bilanDB[v])bilanDB[v]={};
+    Object.entries(md).forEach(function(f){
+      var mo=f[0],vals=f[1];
+      bilanDB[v][mo]={
+        re:(bilanDB[v][mo]?bilanDB[v][mo].re:0)+vals.re,
+        fi:(bilanDB[v][mo]?bilanDB[v][mo].fi:0)+vals.fi
+      };
+    });
+  });
+  // Sauvegarder en base
   var errCount=0;
   for(var v of Object.keys(archive)){
     for(var mo of Object.keys(archive[v])){
       var d=bilanDB[v][mo];
       try{
         var ins=await db.from('bilan_annuel').insert({vendeur:v,mois:mo,commandes:d.re,financements:d.fi,equipe:currentEquipe});
-        if(ins.error){var upd=await db.from('bilan_annuel').update({commandes:d.re,financements:d.fi}).eq('vendeur',v).eq('mois',mo);if(upd.error)errCount++;}
-        else bilanTableExists=true;
+        if(ins.error){
+          await db.from('bilan_annuel').update({commandes:d.re,financements:d.fi}).eq('vendeur',v).eq('mois',mo).eq('equipe',currentEquipe);
+        } else bilanTableExists=true;
       }catch(e){errCount++;}
     }
   }
-  VS.forEach(function(v){if(S[v]){S[v].counter=0;S[v].memo=[];S[v].perduAC=[];S[v].perduC=[];}});GM=[];
-  renderAll();
+
+  // ── ÉTAPE 2 : Remettre à zéro localement ──
+  VS.forEach(function(v){
+    if(S[v]){
+      S[v].counter=0;
+      S[v].memo=[];
+      S[v].perduAC=[];
+      S[v].perduC=[];
+    }
+  });
+  GM=[];
+  leadsData={};  // RAZ leads en mémoire
+
+  // ── ÉTAPE 3 : Remettre à zéro en base ──
+  // Compteurs
   for(var v of VS){
-    try{var ex=await db.from('compteurs').select('id').eq('vendeur',v).limit(1);if(ex.data&&ex.data.length>0)await db.from('compteurs').update({valeur:0}).eq('vendeur',v);else await db.from('compteurs').insert({vendeur:v,valeur:0,equipe:currentEquipe});}catch(e){}
+    try{
+      var ex=await db.from('compteurs').select('id').eq('vendeur',v).eq('equipe',currentEquipe).limit(1);
+      if(ex.data&&ex.data.length>0) await db.from('compteurs').update({valeur:0}).eq('vendeur',v).eq('equipe',currentEquipe);
+      else await db.from('compteurs').insert({vendeur:v,valeur:0,equipe:currentEquipe});
+    }catch(e){}
   }
-  try{await db.from('memo').delete().neq('id','__x__');}catch(e){}
-  try{await db.from('contacts_perdus').delete().neq('id','__x__');}catch(e){}
+  // Mémos (commandes gagnées)
+  try{await db.from('memo').delete().eq('equipe',currentEquipe);}catch(e){}
+  // Contacts perdus archivés
+  try{
+    if(VS.length>0) await db.from('contacts_perdus').delete().in('vendeur',VS);
+  }catch(e){}
+  // Leads du mois courant
+  try{
+    if(VS.length>0) await db.from('leads').delete().eq('mois',moisCourant).in('vendeur',VS);
+  }catch(e){}
+
+  showL(false);
   renderAll();
-  toast(errCount>0?'Archive avec '+errCount+' erreur(s)':'Mois archive et remis a zero !',4000);
+  toast(errCount>0?'⚠️ Clôture avec '+errCount+' erreur(s) — vérifiez le bilan':'✅ Mois clôturé ! Bonne continuation pour '+getNextMonth(moisCourant),5000);
+}
+
+function getNextMonth(moisYYYYMM){
+  var parts=moisYYYYMM.split('-');
+  var y=parseInt(parts[0]),m=parseInt(parts[1]);
+  m++;if(m>12){m=1;y++;}
+  return y+'-'+(m<10?'0':'')+m;
 }
 
 async function razAnnuel(){
