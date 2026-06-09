@@ -1260,7 +1260,7 @@ function rRAZ(){
       <button class="btn-raz" style="background:var(--red2);color:var(--red);border-color:#fecaca;padding:5px 12px;font-size:11px" onclick="razOne('${v}')">RAZ compteur</button>
     </div>`;
   });
-  return\`<div class="sec" style="border:2px solid #f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.15)">
+  return`<div class="sec" style="border:2px solid #f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.15)">
     <div class="sec-h" style="background:linear-gradient(135deg,#92400e,#b45309);padding:14px 18px">
       <div class="sec-title" style="font-size:15px"><div class="sic" style="font-size:14px">📅</div>Clôture fin de mois</div>
       <div style="font-size:11px;color:rgba(255,255,255,.6)">\${moisCourant}</div>
@@ -1290,7 +1290,7 @@ function rRAZ(){
     <div class="sec-h ch"><div class="sec-title"><div class="sic">🔄</div>RAZ compteurs individuels</div></div>
     <div class="cfg-grid">\${cards}</div>
     <button class="btn-sv" onclick="razAll()" style="background:var(--red);">RAZ — Tous les compteurs</button>
-  </div>\`;
+  </div>`;
 }
 
 // ══ PAGE NOMS VENDEURS ══
@@ -1938,43 +1938,40 @@ async function razSecurise(){
 }
 
 function showRazModal(cmds, moisCourant, moisLabel){
-  // Supprimer une éventuelle modale existante
-  var existing=document.getElementById('raz-modal');
+  var existing=document.getElementById("raz-modal");
   if(existing)existing.remove();
-
-  // Construire les lignes du tableau
-  var rows=cmds.map(function(m,i){
-    var opts=(m.opts||[]).join(', ')||'—';
-    var hasFin=(m.opts||[]).includes('Financement')||(m.opts||[]).includes('Fi Classic')||(m.opts||[]).includes('LOA');
-    return '<tr style="border-bottom:1px solid var(--border)">'
-      +'<td style="padding:8px 12px;text-align:center">'
-      +'<input type="checkbox" id="raz-chk-'+i+'" checked '
-      +'style="width:16px;height:16px;cursor:pointer;accent-color:var(--green2)">'
-      +'</td>'
-      +'<td style="padding:8px 12px">'
-      +'<div style="display:flex;align-items:center;gap:8px">'
-      +'<div style="width:24px;height:24px;border-radius:50%;background:var(--navy2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">'+ini(m.vendeur)+'</div>'
-      +'<div style="font-weight:600;font-size:12px">'+m.vendeur+'</div>'
-      +'</div></td>'
-      +'<td style="padding:8px 12px;font-size:12px;color:var(--text3)">'+fmt(m.date)+'</td>'
-      +'<td style="padding:8px 12px;font-size:12px;font-weight:500">'+m.client+'</td>'
-      +'<td style="padding:8px 12px;font-size:11px;color:var(--text3)">'+m.vehicule+'</td>'
-      +'<td style="padding:8px 12px">'+(hasFin?'<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600">✓ FIN</span>':'')+'</td>'
-      +'</tr>';
-  }).join('');
 
   var modal=document.createElement('div');
   modal.id='raz-modal';
   modal.style.cssText='position:fixed;inset:0;background:rgba(15,31,61,.7);z-index:6000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:16px';
 
-  modal.innerHTML='<div style="background:#fff;border-radius:14px;width:100%;max-width:800px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
+  // Construire les lignes du tableau
+  var rowsHtml=cmds.map(function(m,i){
+    var opts=(m.opts||[]).join(', ')||'—';
+    var hasFin=(m.opts||[]).includes('Financement')||(m.opts||[]).includes('Fi Classic')||(m.opts||[]).includes('LOA');
+    return '<tr style="border-bottom:1px solid #e5e7eb">'
+      +'<td style="padding:8px 12px;text-align:center">'
+      +'<input type="checkbox" id="raz-chk-'+i+'" checked style="width:16px;height:16px;cursor:pointer;accent-color:#059669">'
+      +'</td>'
+      +'<td style="padding:8px 12px"><div style="display:flex;align-items:center;gap:8px">'
+      +'<div style="width:24px;height:24px;border-radius:50%;background:#1a3a6e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700">'+ini(m.vendeur)+'</div>'
+      +'<div style="font-weight:600;font-size:12px">'+m.vendeur+'</div>'
+      +'</div></td>'
+      +'<td style="padding:8px 12px;font-size:12px;color:#6b7280">'+fmt(m.date)+'</td>'
+      +'<td style="padding:8px 12px;font-size:12px;font-weight:500">'+m.client+'</td>'
+      +'<td style="padding:8px 12px;font-size:11px;color:#6b7280">'+(m.vehicule||'')+'</td>'
+      +'<td style="padding:8px 12px">'+(hasFin?'<span style="background:#dcfce7;color:#15803d;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600">✓ FIN</span>':'')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  var html='<div style="background:#fff;border-radius:14px;width:100%;max-width:800px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
     // Header
     +'<div style="background:linear-gradient(135deg,#b45309,#92400e);padding:16px 20px;display:flex;align-items:center;justify-content:space-between">'
     +'<div>'
     +'<div style="font-size:15px;font-weight:700;color:#fff">⚠️ Données du mois en cours détectées</div>'
-    +'<div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:3px">'+moisLabel+' — '+cmds.length+' commande'+(cmds.length>1?'s':'')+' enregistrée'+(cmds.length>1?'s':'')+' ce mois</div>'
+    +'<div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:3px">'+moisLabel+' — '+cmds.length+' commande'+(cmds.length>1?'s':'')+' enregistrée'+(cmds.length>1?'s':'')+'</div>'
     +'</div>'
-    +'<button onclick="document.getElementById('raz-modal').remove()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>'
+    +'<button id="raz-close-btn" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>'
     +'</div>'
     // Avertissement
     +'<div style="padding:14px 20px;background:#fff7ed;border-bottom:1px solid #fed7aa;font-size:13px;color:#92400e">'
@@ -1982,50 +1979,60 @@ function showRazModal(cmds, moisCourant, moisLabel){
     +'<span style="font-size:12px">Les lignes cochées ✅ seront archivées. Les lignes décochées seront supprimées définitivement.</span>'
     +'</div>'
     // Sélection rapide
-    +'<div style="padding:10px 20px;background:#f8f9ff;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">'
-    +'<span style="font-size:12px;color:var(--text3)">Sélection rapide :</span>'
-    +'<button onclick="razSelectAll(true)" style="padding:4px 12px;border-radius:5px;border:1px solid var(--border2);background:#fff;font-size:12px;cursor:pointer">✅ Tout cocher</button>'
-    +'<button onclick="razSelectAll(false)" style="padding:4px 12px;border-radius:5px;border:1px solid var(--border2);background:#fff;font-size:12px;cursor:pointer">⬜ Tout décocher</button>'
-    +'<span style="margin-left:auto;font-size:12px;color:var(--text3)" id="raz-count-lbl">'+cmds.length+'/'+cmds.length+' sélectionnées</span>'
+    +'<div style="padding:10px 20px;background:#f8f9ff;border-bottom:1px solid #e5e7eb;display:flex;gap:10px;align-items:center">'
+    +'<span style="font-size:12px;color:#6b7280">Sélection rapide :</span>'
+    +'<button id="raz-sel-all" style="padding:4px 12px;border-radius:5px;border:1px solid #d1d5db;background:#fff;font-size:12px;cursor:pointer">✅ Tout cocher</button>'
+    +'<button id="raz-sel-none" style="padding:4px 12px;border-radius:5px;border:1px solid #d1d5db;background:#fff;font-size:12px;cursor:pointer">⬜ Tout décocher</button>'
+    +'<span style="margin-left:auto;font-size:12px;color:#6b7280" id="raz-count-lbl">'+cmds.length+'/'+cmds.length+' sélectionnées</span>'
     +'</div>'
     // Tableau
     +'<div style="overflow-y:auto;flex:1">'
     +'<table style="width:100%;border-collapse:collapse;font-size:13px">'
-    +'<thead><tr style="background:var(--bg)">'
-    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);text-align:center">Archiver</th>'
-    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Vendeur</th>'
-    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Date</th>'
-    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Client</th>'
-    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Véhicule</th>'
-    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)">Fin.</th>'
+    +'<thead><tr style="background:#f3f4f6">'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;color:#6b7280;text-align:center">Archiver</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;color:#6b7280;text-align:left">Vendeur</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;color:#6b7280;text-align:left">Date</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;color:#6b7280;text-align:left">Client</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;color:#6b7280;text-align:left">Véhicule</th>'
+    +'<th style="padding:8px 12px;font-size:10px;text-transform:uppercase;color:#6b7280;text-align:left">Fin.</th>'
     +'</tr></thead>'
-    +'<tbody>'+rows+'</tbody>'
+    +'<tbody>'+rowsHtml+'</tbody>'
     +'</table>'
     +'</div>'
-    // Boutons action
-    +'<div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;gap:10px;background:#fff">'
-    +'<button onclick="document.getElementById('raz-modal').remove()" style="flex:1;padding:11px;background:var(--bg);color:var(--text2);border:1px solid var(--border2);border-radius:8px;font-size:14px;cursor:pointer;font-family:'DM Sans',sans-serif">Annuler</button>'
-    +'<button onclick="razConfirmSelection('+JSON.stringify(cmds.map(function(m){return m.id||''}))+',''+moisCourant+'')" style="flex:2;padding:11px;background:linear-gradient(135deg,#b45309,#92400e);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📅 Confirmer la clôture</button>'
+    // Boutons
+    +'<div style="padding:16px 20px;border-top:1px solid #e5e7eb;display:flex;gap:10px;background:#fff">'
+    +'<button id="raz-cancel-btn" style="flex:1;padding:11px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:8px;font-size:14px;cursor:pointer">Annuler</button>'
+    +'<button id="raz-confirm-btn" style="flex:2;padding:11px;background:linear-gradient(135deg,#b45309,#92400e);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">📅 Confirmer la clôture</button>'
     +'</div>'
     +'</div>';
 
-  // Mettre à jour le compteur quand on coche/décoche
-  modal.querySelectorAll && setTimeout(function(){
-    for(var i=0;i<cmds.length;i++){
-      (function(idx){
-        var chk=document.getElementById('raz-chk-'+idx);
-        if(chk) chk.addEventListener('change',function(){
-          var cnt=0;
-          for(var j=0;j<cmds.length;j++){var el=document.getElementById('raz-chk-'+j);if(el&&el.checked)cnt++;}
-          var lbl=document.getElementById('raz-count-lbl');
-          if(lbl)lbl.textContent=cnt+'/'+cmds.length+' sélectionnées';
-        });
-      })(i);
-    }
-  },50);
-
+  modal.innerHTML=html;
   document.body.appendChild(modal);
+
+  // Attacher les événements après insertion dans le DOM
+  document.getElementById("raz-close-btn").onclick=function(){modal.remove();};
+  document.getElementById("raz-cancel-btn").onclick=function(){modal.remove();};
+  document.getElementById("raz-confirm-btn").onclick=function(){
+    var allIds=cmds.map(function(m){return m.id||'';});
+    razConfirmSelection(allIds, moisCourant);
+  };
+  document.getElementById("raz-sel-all").onclick=function(){razSelectAll(true,cmds.length);};
+  document.getElementById("raz-sel-none").onclick=function(){razSelectAll(false,cmds.length);};
+
+  // Compteur de cases cochées
+  for(var i=0;i<cmds.length;i++){
+    (function(idx){
+      var chk=document.getElementById('raz-chk-'+idx);
+      if(chk) chk.addEventListener('change',function(){
+        var cnt=0;
+        for(var j=0;j<cmds.length;j++){var el=document.getElementById('raz-chk-'+j);if(el&&el.checked)cnt++;}
+        var lbl=document.getElementById('raz-count-lbl');
+        if(lbl)lbl.textContent=cnt+'/'+cmds.length+' sélectionnées';
+      });
+    })(i);
+  }
 }
+
 
 function razSelectAll(checked){
   var i=0;
@@ -2048,7 +2055,7 @@ async function razConfirmSelection(allIds, moisCourant){
     else rejectedIds.push(id);
   });
 
-  document.getElementById('raz-modal').remove();
+  document.getElementById("raz-modal").remove();
   showL(true);
   toast('Clôture en cours...',8000);
 
