@@ -822,16 +822,23 @@ async function loadData(){
     const mR = VS.length>0
       ? await db.from('memo').select('*').in('vendeur',VS).order('created_at',{ascending:false})
       : {data:[]};
-    VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};});GM=[];
-    console.log('VS courant:',VS,'equipe:',currentEquipe);
-    console.log('Contacts chargés:',cAll.data?.length,'Affaires:',aAll.data?.length);
+    // Initialiser S pour tous les vendeurs connus
+    VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};});
+    GM=[];
+
+    // Pousser les contacts — créer S[vendeur] si pas dans VS (sécurité)
     (cAll.data||[]).forEach(r=>{
+      if(!r.vendeur)return;
       if(!S[r.vendeur])S[r.vendeur]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};
       S[r.vendeur].contacts.push(r);
+      // Si ce vendeur n'est pas dans VS, l'ajouter pour qu'il soit visible
+      if(!VS.includes(r.vendeur))VS.push(r.vendeur);
     });
     (aAll.data||[]).forEach(r=>{
+      if(!r.vendeur)return;
       if(!S[r.vendeur])S[r.vendeur]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};
       S[r.vendeur].affaires.push(r);
+      if(!VS.includes(r.vendeur))VS.push(r.vendeur);
     });
     (mR.data||[]).forEach(r=>{
       if(S[r.vendeur])S[r.vendeur].memo.push(r);
@@ -1661,14 +1668,24 @@ async function razOne(v){
   if(!canAdmin()){toast('Réservé au chef de groupe ou directeur');return}
   if(!confirm(`Remettre le compteur de ${v} à zéro ?`))return;
   S[v].counter=0;renderAll();
-  db.from('compteurs').upsert({vendeur:v,valeur:0},{onConflict:'vendeur'}).catch(()=>{});
-  toast(`Compteur ${v} remis à zéro`);
+  try{
+    var ex=await db.from('compteurs').select('id').eq('vendeur',v).eq('equipe',currentEquipe).limit(1);
+    if(ex.data&&ex.data.length>0) await db.from('compteurs').update({valeur:0}).eq('vendeur',v).eq('equipe',currentEquipe);
+    else await db.from('compteurs').insert({vendeur:v,valeur:0,equipe:currentEquipe});
+    toast(`Compteur ${v} remis à zéro`);
+  }catch(e){toast('Erreur: '+e.message);}
 }
 async function razAll(){
   if(!canAdmin())return;
   if(!confirm('Remettre TOUS les compteurs à zéro ?'))return;
   VS.forEach(v=>{if(S[v])S[v].counter=0});renderAll();
-  await Promise.all(VS.map(v=>db.from('compteurs').upsert({vendeur:v,valeur:0},{onConflict:'vendeur'}).catch(()=>{})));
+  for(const v of VS){
+    try{
+      var ex=await db.from('compteurs').select('id').eq('vendeur',v).eq('equipe',currentEquipe).limit(1);
+      if(ex.data&&ex.data.length>0) await db.from('compteurs').update({valeur:0}).eq('vendeur',v).eq('equipe',currentEquipe);
+      else await db.from('compteurs').insert({vendeur:v,valeur:0,equipe:currentEquipe});
+    }catch(e){}
+  }
   toast('Tous les compteurs remis à zéro');
 }
 async function saveObj(){
