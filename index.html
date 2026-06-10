@@ -367,17 +367,19 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
   .btn-logout{padding:4px 8px;font-size:11px}
 
   /* ── KPI bar : scroll horizontal ── */
-  .kpibar{padding:6px 12px 8px;position:relative;top:auto;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .kpibar{padding:4px 10px 6px;position:relative;top:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .kpibar::-webkit-scrollbar{display:none}
   .kpibar.vend{position:relative}
-  .kpi-row{flex-wrap:nowrap;gap:0;min-width:max-content}
-  .kpi{padding:3px 10px;min-width:64px}
-  .kv{font-size:18px}
-  .kv.sm{font-size:14px}
-  .kpi-sub{font-size:10px}
-  .kpi-lbl{font-size:9px}
-  .kb-label{font-size:9px;margin-bottom:4px}
-  .equipe-switch{padding:0 8px}
-  .eq-btn{padding:4px 10px;font-size:11px}
+  .kpi-row{flex-wrap:nowrap;gap:0;min-width:max-content;align-items:flex-start}
+  .kpi{padding:3px 8px;min-width:56px}
+  .kv{font-size:16px}
+  .kv.sm{font-size:13px}
+  .kpi-sub{font-size:9px;white-space:nowrap}
+  .kpi-lbl{font-size:8px;white-space:nowrap}
+  .kb-label{font-size:9px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .equipe-switch{padding:0 6px;flex-shrink:0}
+  .eq-btn{padding:3px 8px;font-size:10px}
+  .kdiv{margin:0 3px}
 
   /* ── Layout : sidebar cachée, menu hamburger ── */
   .layout{flex-direction:column}
@@ -638,18 +640,18 @@ body.theme-vo .eq-badge{background:#b45309;color:#fff}
 <div class="modal-overlay hidden" id="modal-valid">
   <div class="modal-card">
     <div class="modal-title">🏆 Valider la commande</div>
-    <div class="modal-sub">Vérifiez et modifiez si nécessaire avant de confirmer.</div>
+    <div class="modal-sub" style="font-size:12px;color:var(--text3)">Tous les champs sont modifiables — la date détermine le mois de comptabilisation.</div>
     <div class="modal-field">
-      <label class="modal-label">Client</label>
-      <input type="text" class="modal-input readonly" id="m-client" readonly>
+      <label class="modal-label">Client <span style="color:var(--green2);font-size:9px">✏️ modifiable</span></label>
+      <input type="text" class="modal-input" id="m-client" placeholder="Nom du client">
     </div>
     <div class="modal-field">
       <label class="modal-label">Véhicule <span style="color:var(--green2);font-size:9px">✏️ modifiable</span></label>
       <input type="text" class="modal-input" id="m-vehicule" placeholder="Ex : Peugeot 308">
     </div>
     <div class="modal-field">
-      <label class="modal-label">Date</label>
-      <input type="text" class="modal-input readonly" id="m-date" readonly>
+      <label class="modal-label">Date de la vente <span style="color:var(--green2);font-size:9px">✏️ détermine le mois comptabilisé</span></label>
+      <input type="date" class="modal-input" id="m-date">
     </div>
 
     <div class="modal-btns">
@@ -1054,7 +1056,11 @@ function rVend(v){
     <td><span class="cd">${fmt(c.date)}</span></td>
     <td><span class="cc">${c.client}</span></td>
     <td><span class="cv">${c.vehicule||''}</span></td>
-    <td><div class="acts"><button class="ba bAC" onclick="doAC('${v}','${c.id}')">AC</button><button class="ba bP" onclick="doPc('${v}','${c.id}')">P</button></div></td>
+    <td><div class="acts">
+      <button class="ba" style="background:#f0f9ff;color:#0369a1;border-color:#bae6fd" onclick="editContact('${v}','${c.id}')">✏️</button>
+      <button class="ba bAC" onclick="doAC('${v}','${c.id}')">AC</button>
+      <button class="ba bP" onclick="doPc('${v}','${c.id}')">P</button>
+    </div></td>
   </tr>`});
   let ar=sa.length?'':` <tr class="empty-r"><td colspan="5">Aucune affaire chaude en cours</td></tr>`;
   sa.forEach(a=>{
@@ -1460,6 +1466,52 @@ function locked(msg='Accès réservé au Chef de groupe ou Directeur'){
   return`<div class="sec"><div class="locked"><div class="locked-icon">🔒</div><div class="locked-title">Accès restreint</div><div class="locked-sub">${msg}</div></div></div>`;
 }
 
+// Modifier un contact existant (date, client, véhicule)
+function editContact(v,id){
+  var ct=S[v]&&S[v].contacts.find(function(x){return x.id===id;});
+  if(!ct)return;
+  var vk=v.replace(/[^a-zA-Z0-9]/g,'_');
+  // Pré-remplir les champs du formulaire avec les valeurs actuelles
+  var dateEl=document.getElementById('id-'+vk);
+  var clientEl=document.getElementById('ic-'+vk);
+  var vehEl=document.getElementById('iv-'+vk);
+  if(dateEl)dateEl.value=ct.date||'';
+  if(clientEl)clientEl.value=ct.client||'';
+  if(vehEl)vehEl.value=ct.vehicule||'';
+  // Changer le bouton Valider en mode "Modifier"
+  var btn=document.querySelector('[onclick="addC(\''+v+'\')"]');
+  if(btn){
+    btn.textContent='Modifier';
+    btn.style.background='#0369a1';
+    btn.setAttribute('onclick','saveEditContact(\''+v+'\',\''+id+'\')');
+  }
+  // Scroller vers le formulaire
+  if(dateEl)dateEl.scrollIntoView({behavior:'smooth',block:'center'});
+  if(dateEl)dateEl.focus();
+  toast('Modifiez les champs puis cliquez Modifier');
+}
+
+async function saveEditContact(v,id){
+  var vk=v.replace(/[^a-zA-Z0-9]/g,'_');
+  var dateEl=document.getElementById('id-'+vk);
+  var clientEl=document.getElementById('ic-'+vk);
+  var vehEl=document.getElementById('iv-'+vk);
+  var newDate=dateEl?dateEl.value:'';
+  var newClient=clientEl?clientEl.value.trim():'';
+  var newVeh=vehEl?vehEl.value.trim():'';
+  if(!newDate||!newClient){toast('Date et client requis');return;}
+  // Mettre à jour en mémoire
+  var ct=S[v].contacts.find(function(x){return x.id===id;});
+  if(ct){ct.date=newDate;ct.client=newClient;ct.vehicule=newVeh;}
+  // Mettre à jour en base
+  try{
+    await db.from('contacts').update({date:newDate,client:newClient,vehicule:newVeh}).eq('id',id);
+    toast('Contact modifié ✓');
+  }catch(e){toast('Erreur: '+e.message);}
+  // Remettre le bouton en mode Valider
+  renderAll();
+}
+
 async function addC(v){
   const vk=v.replace(/[^a-zA-Z0-9]/g,'_');
   const date=$('id-'+vk)?.value,client=$('ic-'+vk)?.value.trim(),veh=$('iv-'+vk)?.value.trim();
@@ -1529,18 +1581,20 @@ async function doPa(v,id){
   try{await db.from('affaires').delete().eq('id',id);}catch(e){}
   toast('Affaire perdue');
 }
-async function doG(v,id,newVehicule,serviceOverride){
+async function doG(v,id,newVehicule,serviceOverride,newDate,newClient){
   const i=S[v].affaires.findIndex(a=>a.id===id);if(i<0)return;
   const a=S[v].affaires.splice(i,1)[0];
+  // Appliquer les modifications de la modale
   if(newVehicule&&newVehicule.trim())a.vehicule=newVehicule.trim();
-  // Utiliser le service sélectionné (VN ou VO) ou à défaut l'équipe courante
+  if(newDate&&newDate.trim())a.date=newDate.trim();
+  if(newClient&&newClient.trim())a.client=newClient.trim();
   const equipeCommande=serviceOverride||currentEquipe;
   a.vendeur=v;a.equipe=equipeCommande;
   S[v].memo.push(a);GM.unshift(a);
   renderAll();
   try{await db.from('affaires').delete().eq('id',id);}catch(e){}
   try{await db.from('memo').insert({id:uid(),vendeur:v,date:a.date,client:a.client,vehicule:a.vehicule||'',opts:a.opts||[],equipe:equipeCommande});}catch(e){}
-  toast('Commande gagnée ! 🏆'+(serviceOverride?' ('+serviceOverride+')':''));
+  toast('Commande gagnée ! 🏆');
 }
 async function togOpt(v,id,opt){
   const a=S[v].affaires.find(a=>a.id===id);if(!a)return;
@@ -2244,7 +2298,8 @@ function openModalG(v,id){
   _modalV=v;_modalId=id;_modalService=currentEquipe;
   document.getElementById('m-client').value=a.client||'';
   document.getElementById('m-vehicule').value=a.vehicule||'';
-  document.getElementById('m-date').value=fmt(a.date);
+  // Date au format YYYY-MM-DD pour input type=date
+  document.getElementById('m-date').value=a.date||new Date().toISOString().slice(0,10);
   document.getElementById('modal-valid').classList.remove('hidden');
   setTimeout(function(){document.getElementById('m-vehicule').focus();},100);
 }
@@ -2252,9 +2307,11 @@ function closeModal(){document.getElementById('modal-valid').classList.add('hidd
 async function confirmG(){
   if(!_modalV||!_modalId)return;
   var newVeh=document.getElementById('m-vehicule').value.trim();
+  var newDate=document.getElementById('m-date').value||null;
+  var newClient=document.getElementById('m-client').value.trim();
   var v=_modalV,id=_modalId;
   closeModal();
-  await doG(v,id,newVeh,currentEquipe);
+  await doG(v,id,newVeh,currentEquipe,newDate,newClient);
 }
 
 async function switchEquipe(eq){
