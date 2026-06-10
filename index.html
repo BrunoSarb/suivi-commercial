@@ -793,15 +793,25 @@ async function loadVendeurNames(){
 async function loadData(){
   showL(true);
   try{
+    // Charger contacts et affaires : d'abord par equipe, puis compléter avec les orphelins
     const[cR,aR,kR]=await Promise.all([
-      VS.length>0
-        ? db.from('contacts').select('*').in('vendeur',VS).order('date',{ascending:true})
-        : db.from('contacts').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
-      VS.length>0
-        ? db.from('affaires').select('*').in('vendeur',VS).order('date',{ascending:true})
-        : db.from('affaires').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
+      db.from('contacts').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
+      db.from('affaires').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
       db.from('compteurs').select('*').eq('equipe',currentEquipe)
     ]);
+    // Fallback : charger aussi les contacts/affaires sans equipe ou avec equipe null
+    let cR2={data:[]},aR2={data:[]};
+    if(VS.length>0){
+      [cR2,aR2]=await Promise.all([
+        db.from('contacts').select('*').is('equipe',null).in('vendeur',VS).order('date',{ascending:true}),
+        db.from('affaires').select('*').is('equipe',null).in('vendeur',VS).order('date',{ascending:true})
+      ]);
+    }
+    // Fusionner en évitant les doublons
+    const cIds=new Set((cR.data||[]).map(r=>r.id));
+    const aIds=new Set((aR.data||[]).map(r=>r.id));
+    const cAll={data:[...(cR.data||[]),...(cR2.data||[]).filter(r=>!cIds.has(r.id))]};
+    const aAll={data:[...(aR.data||[]),...(aR2.data||[]).filter(r=>!aIds.has(r.id))]};
     // Objectifs : chercher d'abord pour currentEquipe, sinon fallback sans filtre equipe
     let oR=await db.from('objectifs').select('*').eq('equipe',currentEquipe);
     if(!oR.data||oR.data.length===0){
@@ -813,17 +823,13 @@ async function loadData(){
       ? await db.from('memo').select('*').in('vendeur',VS).order('created_at',{ascending:false})
       : {data:[]};
     VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};});GM=[];
-    (cR.data||[]).forEach(r=>{
-      if(S[r.vendeur]){
-        S[r.vendeur].contacts.push(r);
-      } else {
-        // Le vendeur n'est pas dans VS courant (nom changé ou equipe changée)
-        // On crée une entrée temporaire pour ne pas perdre les données
-        if(!S[r.vendeur])S[r.vendeur]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};
-        S[r.vendeur].contacts.push(r);
-      }
+    console.log('VS courant:',VS,'equipe:',currentEquipe);
+    console.log('Contacts chargés:',cAll.data?.length,'Affaires:',aAll.data?.length);
+    (cAll.data||[]).forEach(r=>{
+      if(!S[r.vendeur])S[r.vendeur]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};
+      S[r.vendeur].contacts.push(r);
     });
-    (aR.data||[]).forEach(r=>{
+    (aAll.data||[]).forEach(r=>{
       if(!S[r.vendeur])S[r.vendeur]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};
       S[r.vendeur].affaires.push(r);
     });
