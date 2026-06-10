@@ -977,7 +977,7 @@ function updKPIs(){
   if(tLoaRow)tLoaRow.style.display=isVO?'block':'none';
   if(tAlKpi)tAlKpi.style.display=isVO?'none':'';
   sl('t-fi',k.fi);sl('t-pfi',pct(k.fi,k.re)+'%');
-  sl('t-loa',k.loa+' — '+pct(k.loa,k.fi)+'%');
+  sl('t-loa',k.loa+' — '+pct(k.loa,k.re)+'%'); // % sur total cdes
   sl('t-pl',k.pl);sl('t-ppl',pct(k.pl,k.re)+'%');
   sl('t-gr',k.gr);sl('t-pgr',pct(k.gr,k.re)+'%');
   sl('t-co',k.co);sl('t-pco',pct(k.co,k.re)+'%');
@@ -1007,7 +1007,7 @@ function updKPIs(){
     if(vLoaRow)vLoaRow.style.display=isVO?'block':'none';
     if(vAlKpi)vAlKpi.style.display=isVO?'none':'';
     sl('v-fi',kv.fi);sl('v-pfi',pct(kv.fi,kv.re)+'%');
-    sl('v-loa',kv.loa+' — '+pct(kv.loa,kv.fi)+'%');
+    sl('v-loa',kv.loa+' — '+pct(kv.loa,kv.re)+'%'); // % sur total cdes
     sl('v-pl',kv.pl);sl('v-ppl',pct(kv.pl,kv.re)+'%');
     sl('v-gr',kv.gr);sl('v-pgr',pct(kv.gr,kv.re)+'%');
     sl('v-co',kv.co);sl('v-pco',pct(kv.co,kv.re)+'%');sl('v-wa',kv.wa);sl('v-pwa',pct(kv.wa,kv.re)+'%');
@@ -1109,15 +1109,21 @@ function rVend(v){
     sm.forEach(m=>{
       const opts=(m.opts||[]).join(', ')||'—';
       const hasStock=(m.opts||[]).includes('Cde Stock');
-      const hasFin=(m.opts||[]).includes('Financement');
-      // Pas de badge équipe — on est déjà filtrés par currentEquipe
-      const eqBadge='';
+      const hasFin=(m.opts||[]).includes('Financement')||(m.opts||[]).includes('Fi Classic')||(m.opts||[]).includes('LOA');
+      const mid=m.id||'';
       mr+=`<tr style="${hasStock?'background:#f5f3ff':''}">
         <td><span class="cd">${fmt(m.date)}</span></td>
-        <td><span class="cc">${m.client}</span>${hasStock?'<span style="margin-left:6px;font-size:9px;background:#7c3aed;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600">STOCK</span>':''}${eqBadge}</td>
+        <td><span class="cc">${m.client}</span>${hasStock?'<span style="margin-left:6px;font-size:9px;background:#7c3aed;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600">STOCK</span>':''}</td>
         <td><span class="cv">${m.vehicule||''}</span></td>
         <td style="color:var(--text2);font-size:11px">${opts}</td>
         <td style="text-align:center">${hasFin?'<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">✓ FIN.</span>':'—'}</td>
+        <td>
+          <button class="ba bP" onclick="annulerCde('${v}','${mid}')"
+            title="Annuler cette commande (client a rétracté)"
+            style="font-size:10px;padding:3px 8px">
+            ✕ Annuler
+          </button>
+        </td>
       </tr>`;
     });
   }
@@ -1167,7 +1173,7 @@ function rVend(v){
     </div>
     <div class="tw"><table>
       <thead><tr>
-        <th>Date</th><th>Client</th><th>Véhicule</th><th>Options</th><th style="text-align:center">Fin.</th>
+        <th>Date</th><th>Client</th><th>Véhicule</th><th>Options</th><th style="text-align:center">Fin.</th><th>Action</th>
       </tr></thead>
       <tbody>${mr}</tbody>
     </table></div>
@@ -1603,6 +1609,22 @@ async function doPa(v,id){
   try{await db.from('affaires').delete().eq('id',id);}catch(e){}
   toast('Affaire perdue');
 }
+// Annuler une commande gagnée (client rétracté après signature)
+async function annulerCde(v,id){
+  if(!confirm('Annuler cette commande ?\n\nLa commande sera supprimée du tableau de bord.\nElle ne sera PAS retirée du Bilan Annuel si elle y a déjà été archivée.'))return;
+  // Supprimer de la mémoire
+  if(S[v]){
+    S[v].memo=S[v].memo.filter(function(m){return m.id!==id;});
+  }
+  GM=GM.filter(function(m){return m.id!==id;});
+  renderAll();
+  // Supprimer de la base
+  try{
+    await db.from('memo').delete().eq('id',id);
+    toast('Commande annulée');
+  }catch(e){toast('Erreur: '+e.message);}
+}
+
 async function doG(v,id,newVehicule,serviceOverride,newDate,newClient){
   const i=S[v].affaires.findIndex(a=>a.id===id);if(i<0)return;
   const a=S[v].affaires.splice(i,1)[0];
