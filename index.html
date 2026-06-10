@@ -794,8 +794,12 @@ async function loadData(){
   showL(true);
   try{
     const[cR,aR,kR]=await Promise.all([
-      db.from('contacts').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
-      db.from('affaires').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
+      VS.length>0
+        ? db.from('contacts').select('*').in('vendeur',VS).order('date',{ascending:true})
+        : db.from('contacts').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
+      VS.length>0
+        ? db.from('affaires').select('*').in('vendeur',VS).order('date',{ascending:true})
+        : db.from('affaires').select('*').eq('equipe',currentEquipe).order('date',{ascending:true}),
       db.from('compteurs').select('*').eq('equipe',currentEquipe)
     ]);
     // Objectifs : chercher d'abord pour currentEquipe, sinon fallback sans filtre equipe
@@ -809,8 +813,20 @@ async function loadData(){
       ? await db.from('memo').select('*').in('vendeur',VS).order('created_at',{ascending:false})
       : {data:[]};
     VS.forEach(v=>{S[v]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};});GM=[];
-    (cR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].contacts.push(r)});
-    (aR.data||[]).forEach(r=>{if(S[r.vendeur])S[r.vendeur].affaires.push(r)});
+    (cR.data||[]).forEach(r=>{
+      if(S[r.vendeur]){
+        S[r.vendeur].contacts.push(r);
+      } else {
+        // Le vendeur n'est pas dans VS courant (nom changé ou equipe changée)
+        // On crée une entrée temporaire pour ne pas perdre les données
+        if(!S[r.vendeur])S[r.vendeur]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};
+        S[r.vendeur].contacts.push(r);
+      }
+    });
+    (aR.data||[]).forEach(r=>{
+      if(!S[r.vendeur])S[r.vendeur]={contacts:[],affaires:[],memo:[],counter:0,perduAC:[],perduC:[]};
+      S[r.vendeur].affaires.push(r);
+    });
     (mR.data||[]).forEach(r=>{
       if(S[r.vendeur])S[r.vendeur].memo.push(r);
       const moisCourantGM=new Date().toISOString().slice(0,7);
