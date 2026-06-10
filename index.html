@@ -1548,15 +1548,25 @@ async function addC(v){
   if(!S[v])S[v]={contacts:[],affaires:[],memo:[],counter:0};
   S[v].contacts.push(r);S[v].counter++;
   renderAll();
-  db.from('contacts').insert(r).catch(()=>{});
-  (async function(){
-    try{
-      var ex=await db.from('compteurs').select('id').eq('vendeur',v).limit(1);
-      if(ex.data&&ex.data.length>0)await db.from('compteurs').update({valeur:S[v].counter}).eq('vendeur',v).eq('equipe',currentEquipe);
-      else await db.from('compteurs').insert({vendeur:v,valeur:S[v].counter,equipe:currentEquipe});
-    }catch(e){console.warn('ctr:',e);}
-  })();
-  toast('Contact ajouté ✓');
+  // Sauvegarder en base avec gestion d'erreur visible
+  try{
+    const ins=await db.from('contacts').insert(r);
+    if(ins.error){
+      toast('⚠️ Erreur sauvegarde: '+ins.error.message);
+      console.error('contacts insert error:',ins.error);
+    } else {
+      toast('Contact ajouté ✓');
+    }
+  }catch(e){
+    toast('⚠️ Erreur réseau: '+e.message);
+    console.error('contacts insert exception:',e);
+  }
+  // Sauvegarder le compteur
+  try{
+    var ex=await db.from('compteurs').select('id').eq('vendeur',v).eq('equipe',currentEquipe).limit(1);
+    if(ex.data&&ex.data.length>0) await db.from('compteurs').update({valeur:S[v].counter}).eq('vendeur',v).eq('equipe',currentEquipe);
+    else await db.from('compteurs').insert({vendeur:v,valeur:S[v].counter,equipe:currentEquipe});
+  }catch(e){console.warn('ctr:',e);}
 }
 
 async function doAC(v,id){
